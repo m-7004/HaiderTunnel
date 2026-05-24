@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="16dp" android:background="#121212">
+    
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="DarkTunnel Pro" android:textSize="24sp" android:textColor="#FFFFFF"
+        android:textStyle="bold" android:gravity="center" android:layout_marginBottom="24dp"/>
+
+    <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:hint="Target Server (IP)" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+        
+    <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:hint="Port (e.g. 80)" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+
+    <EditText android:id="@+id/etUuid" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:hint="UUID" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+
+    <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:hint="Payload" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+
+    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="60dp"
+        android:text="CONNECT" android:backgroundTint="#8A2BE2" android:textColor="#FFFFFF"
+        android:layout_marginTop="24dp" android:textStyle="bold"/>
+</LinearLayout>
