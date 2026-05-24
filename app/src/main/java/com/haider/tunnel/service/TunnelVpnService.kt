@@ -1,20 +1,18 @@
 package com.haider.tunnel.service
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.haider.tunnel.proxy.ProxyManager
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.net.InetSocketAddress
-import java.nio.ByteBuffer
-import java.nio.channels.DatagramChannel
 
 class TunnelVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var proxyManager: ProxyManager? = null
-    private var running = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val server = intent?.getStringExtra("server") ?: return START_NOT_STICKY
@@ -22,19 +20,31 @@ class TunnelVpnService : VpnService() {
         val uuid = intent.getStringExtra("uuid") ?: return START_NOT_STICKY
         val payload = intent.getStringExtra("payload") ?: ""
 
+        startForegroundNotification()
         Thread { startTunnel(server, port, uuid, payload) }.start()
         return START_STICKY
     }
 
+    private fun startForegroundNotification() {
+        val channelId = "haider_tunnel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(channelId, "Haider Tunnel", NotificationManager.IMPORTANCE_LOW)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+        val notification = Notification.Builder(this, channelId)
+            .setContentTitle("Haider Tunnel")
+            .setContentText("متصل ✓")
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .build()
+        startForeground(1, notification)
+    }
+
     private fun startTunnel(server: String, port: Int, uuid: String, payload: String) {
         try {
-            // تشغيل proxy
             proxyManager = ProxyManager(server, port, uuid, payload)
             proxyManager?.start()
-
             Thread.sleep(500)
 
-            // إعداد VPN
             val builder = Builder()
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
@@ -42,10 +52,7 @@ class TunnelVpnService : VpnService() {
             builder.addDnsServer("1.1.1.1")
             builder.addRoute("0.0.0.0", 0)
             builder.setSession("Haider Tunnel")
-            // proxy protected automatically
-
             vpnInterface = builder.establish()
-            running = true
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -53,9 +60,9 @@ class TunnelVpnService : VpnService() {
     }
 
     override fun onDestroy() {
-        running = false
         proxyManager?.stop()
         vpnInterface?.close()
+        stopForeground(true)
         super.onDestroy()
     }
 }
