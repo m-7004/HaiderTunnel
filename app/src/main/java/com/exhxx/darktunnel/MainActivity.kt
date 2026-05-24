@@ -35,21 +35,16 @@ class MainActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var pingRunnable: Runnable
-    private var isVerifying = false
 
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("RUNNING", false) ?: false
             val statusMsg = intent?.getStringExtra("MSG") ?: ""
             
-            isVerifying = false
             if (isRunning) {
                 triggerConnectedLogs()
             } else {
-                if (statusMsg == "FAILED") {
-                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    appendHtmlLog("<font color='#FF5252'>Unable to detect internet connection [$time]</font><br/>")
-                } else if (statusMsg == "DISCONNECTED") {
+                if (statusMsg == "DISCONNECTED") {
                     triggerDisconnectLogs()
                 }
             }
@@ -84,7 +79,6 @@ class MainActivity : Activity() {
 
         btnClearLogs.setOnClickListener { tvLogs.text = "" }
 
-        // فحص البنج الحقيقي من داخل بروكسي الـ Xray (127.0.0.1:10809)
         pingRunnable = object : Runnable {
             override fun run() {
                 if (TunnelVpnService.isRunning) {
@@ -124,8 +118,6 @@ class MainActivity : Activity() {
                 if (intent != null) {
                     startActivityForResult(intent, 1)
                 } else {
-                    isVerifying = true
-                    updateUi(false)
                     triggerConnectingLogs()
                     startVpn()
                 }
@@ -137,10 +129,11 @@ class MainActivity : Activity() {
         try {
             val start = System.currentTimeMillis()
             val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-            val url = URL("http://cp.cloudflare.com/generate_204")
+            // تم التغيير إلى HTTPS لتجنب حظر الأندرويد للاتصالات المكشوفة
+            val url = URL("https://www.google.com/generate_204")
             val conn = url.openConnection(proxy) as HttpURLConnection
-            conn.connectTimeout = 2000
-            conn.readTimeout = 2000
+            conn.connectTimeout = 3000
+            conn.readTimeout = 3000
             if (conn.responseCode == 204 || conn.responseCode == 200) {
                 return (System.currentTimeMillis() - start).toInt()
             }
@@ -201,10 +194,9 @@ class MainActivity : Activity() {
     }
 
     private fun updateUi(isRunning: Boolean) {
-        val alpha = if (isRunning || isVerifying) 0.5f else 1.0f
         arrayOf(etServer, etUuid, etPayload, cbAutoConnect).forEach { 
-            it.isEnabled = ! (isRunning || isVerifying)
-            it.alpha = alpha
+            it.isEnabled = !isRunning
+            it.alpha = if (isRunning) 0.5f else 1.0f
         }
 
         if (isRunning) {
@@ -212,11 +204,6 @@ class MainActivity : Activity() {
             btnConnect.setBackgroundColor(Color.parseColor("#1C1C1E"))
             btnConnect.setTextColor(Color.parseColor("#FF5252"))
             mainHandler.post(pingRunnable)
-        } else if (isVerifying) {
-            btnConnect.text = "CONNECTING..."
-            btnConnect.setBackgroundColor(Color.parseColor("#555555"))
-            btnConnect.setTextColor(Color.WHITE)
-            mainHandler.removeCallbacks(pingRunnable)
         } else {
             btnConnect.text = "CONNECT"
             btnConnect.setBackgroundColor(Color.parseColor("#B388FF"))

@@ -9,10 +9,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.URL
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -34,52 +30,16 @@ class TunnelVpnService : VpnService() {
             val serverInput = intent.getStringExtra("SERVER") ?: ""
             val uuid = intent.getStringExtra("UUID") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
-            
-            // منع الاتصال فوراً إذا كان السيرفر فارغاً لتخفيف الضغط
-            if (serverInput.trim().isEmpty()) {
-                stopVpnService("FAILED")
-                return START_NOT_STICKY
-            }
-
-            showNotification("Verifying connection...")
 
             Thread {
                 try {
-                    // تشغيل النواة فقط (بدون إظهار علامة الـ VPN)
+                    // تشغيل النواة وإنشاء النفق فوراً بدون أي شروط تعجيزية
                     startXrayEngine(serverInput, uuid, payloadRaw)
+                    setupVpnInterface()
                     
-                    // انتظار النواة لفتح المنفذ
-                    Thread.sleep(1500)
-                    
-                    // الفحص القاسي: إرسال طلب إنترنت حصرياً عبر منفذ Xray
-                    var isReallyConnected = false
-                    for (i in 1..6) { 
-                        try {
-                            val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-                            val url = URL("http://cp.cloudflare.com/generate_204")
-                            val conn = url.openConnection(proxy) as HttpURLConnection
-                            conn.connectTimeout = 2000
-                            conn.readTimeout = 2000
-                            val code = conn.responseCode
-                            if (code == 204 || code == 200) {
-                                isReallyConnected = true
-                                break
-                            }
-                        } catch (e: Exception) {
-                            Thread.sleep(1000)
-                        }
-                    }
-
-                    // إذا نجح الإنترنت بالعبور من النواة، نظهر علامة الـ VPN!
-                    if (isReallyConnected) {
-                        setupVpnInterface()
-                        isRunning = true
-                        showNotification("Connected 🟢")
-                        sendStateBroadcast(true, "CONNECTED")
-                    } else {
-                        stopVpnService("FAILED")
-                    }
-                    
+                    isRunning = true
+                    showNotification("Connected 🟢")
+                    sendStateBroadcast(true, "CONNECTED")
                 } catch (e: Exception) {
                     stopVpnService("FAILED")
                 }
