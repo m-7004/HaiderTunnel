@@ -27,18 +27,17 @@ class TunnelVpnService : VpnService() {
         }
 
         if (action == "ACTION_START") {
-            val server = intent.getStringExtra("SERVER") ?: ""
-            val port = intent.getStringExtra("PORT") ?: "80"
+            val serverInput = intent.getStringExtra("SERVER") ?: ""
             val uuid = intent.getStringExtra("UUID") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
             
             isRunning = true
             sendStateBroadcast(true)
-            showNotification(server)
+            showNotification(serverInput)
 
             Thread {
                 try {
-                    startXrayEngine(server, port, uuid, payloadRaw)
+                    startXrayEngine(serverInput, uuid, payloadRaw)
                     setupVpnInterface()
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -64,10 +63,19 @@ class TunnelVpnService : VpnService() {
         } catch (e: Exception) {}
     }
 
-    private fun startXrayEngine(server: String, port: String, uuid: String, payloadRaw: String) {
+    private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
         try {
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val logFile = File(filesDir, "xray_error.log").absolutePath
+            
+            // استخراج الآي بي والبورت من الحقل المدمج ذكياً
+            var server = serverInput
+            var port = "80"
+            if (serverInput.contains(":")) {
+                val parts = serverInput.split(":")
+                server = parts[0]
+                port = parts[1]
+            }
             
             val parsedPayload = payloadRaw.replace("[crlf]", "\\r\\n").replace("[host_port]", "$server:$port").replace("\"", "\\\"")
 

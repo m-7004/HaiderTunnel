@@ -23,11 +23,11 @@ import java.util.*
 
 class MainActivity : Activity() {
     private lateinit var etServer: EditText
-    private lateinit var etPort: EditText
     private lateinit var etUuid: EditText
     private lateinit var etPayload: EditText
     private lateinit var cbAutoConnect: CheckBox
     private lateinit var btnConnect: Button
+    private lateinit var btnClearLogs: ImageView
     private lateinit var tvLogs: TextView
     private lateinit var logScroll: ScrollView
 
@@ -49,11 +49,11 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
 
         etServer = findViewById(R.id.etServer)
-        etPort = findViewById(R.id.etPort)
         etUuid = findViewById(R.id.etUuid)
         etPayload = findViewById(R.id.etPayload)
         cbAutoConnect = findViewById(R.id.cbAutoConnect)
         btnConnect = findViewById(R.id.btnConnect)
+        btnClearLogs = findViewById(R.id.btnClearLogs)
         tvLogs = findViewById(R.id.tvLogs)
         logScroll = findViewById(R.id.logScroll)
 
@@ -65,12 +65,15 @@ class MainActivity : Activity() {
 
         val prefs = getSharedPreferences("DarkTunnelPrefs", Context.MODE_PRIVATE)
         etServer.setText(prefs.getString("SERVER", ""))
-        etPort.setText(prefs.getString("PORT", ""))
         etUuid.setText(prefs.getString("UUID", ""))
         etPayload.setText(prefs.getString("PAYLOAD", ""))
         cbAutoConnect.isChecked = prefs.getBoolean("AUTO_CONNECT", false)
 
-        // دالة البنج والمحاكاة لطباعة السطور الملونة داخل السجلات مباشرة كل ثانيتين
+        // برمجة زر مسح السجلات
+        btnClearLogs.setOnClickListener {
+            tvLogs.text = ""
+        }
+
         pingRunnable = object : Runnable {
             override fun run() {
                 if (TunnelVpnService.isRunning) {
@@ -78,10 +81,8 @@ class MainActivity : Activity() {
                         val pingMs = executePing()
                         runOnUiThread {
                             val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                            val color = if (pingMs <= 100) "#00E676" else "#FF5252" // أخضر إذا 100 وأقل، أحمر إذا فوق الـ 100
-                            
-                            val logLine = "HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>"
-                            appendHtmlLog(logLine)
+                            val color = if (pingMs <= 100) "#00E676" else "#FF5252"
+                            appendHtmlLog("HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>")
                         }
                     }.start()
                     mainHandler.postDelayed(this, 2500)
@@ -108,7 +109,6 @@ class MainActivity : Activity() {
             } else {
                 val editor = prefs.edit()
                 editor.putString("SERVER", etServer.text.toString())
-                editor.putString("PORT", etPort.text.toString())
                 editor.putString("UUID", etUuid.text.toString())
                 editor.putString("PAYLOAD", etPayload.text.toString())
                 editor.putBoolean("AUTO_CONNECT", cbAutoConnect.isChecked)
@@ -130,11 +130,9 @@ class MainActivity : Activity() {
             val start = System.currentTimeMillis()
             val process = Runtime.getRuntime().exec("ping -c 1 -W 1 8.8.8.8")
             val exitCode = process.waitFor()
-            if (exitCode == 0) {
-                return (System.currentTimeMillis() - start).toInt().coerceAtMost(1200)
-            }
+            if (exitCode == 0) { return (System.currentTimeMillis() - start).toInt().coerceAtMost(1200) }
         } catch (e: Exception) {}
-        return (60..140).random() // قيمة عشوائية ذكية في حال تعذر قراءة الـ ICMP ping الفعلي لضمان استمرار السطور بالملي ثانية
+        return (60..140).random()
     }
 
     private fun appendHtmlLog(htmlText: String) {
@@ -149,7 +147,7 @@ class MainActivity : Activity() {
     private fun triggerConnectingLogs() {
         tvLogs.text = ""
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Connecting to ${etServer.text} port ${etPort.text} [$time]<br/>")
+        appendHtmlLog("Connecting to ${etServer.text} [$time]<br/>")
     }
 
     private fun triggerConnectedLogs() {
@@ -185,7 +183,6 @@ class MainActivity : Activity() {
         val intent = Intent(this, TunnelVpnService::class.java).apply {
             action = "ACTION_START"
             putExtra("SERVER", etServer.text.toString())
-            putExtra("PORT", etPort.text.toString())
             putExtra("UUID", etUuid.text.toString())
             putExtra("PAYLOAD", etPayload.text.toString())
         }
@@ -194,19 +191,19 @@ class MainActivity : Activity() {
 
     private fun updateUi(isRunning: Boolean) {
         val alpha = if (isRunning) 0.5f else 1.0f
-        arrayOf(etServer, etPort, etUuid, etPayload, cbAutoConnect).forEach { 
+        arrayOf(etServer, etUuid, etPayload, cbAutoConnect).forEach { 
             it.isEnabled = !isRunning 
             it.alpha = alpha
         }
 
         if (isRunning) {
             btnConnect.text = "DISCONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#1C1C1E")) // لون غامق للفصل متناسق
+            btnConnect.setBackgroundColor(Color.parseColor("#1C1C1E"))
             btnConnect.setTextColor(Color.parseColor("#FF5252"))
             mainHandler.post(pingRunnable)
         } else {
             btnConnect.text = "CONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#B388FF")) // اللون البنفسجي للاتصال
+            btnConnect.setBackgroundColor(Color.parseColor("#B388FF"))
             btnConnect.setTextColor(Color.WHITE)
             mainHandler.removeCallbacks(pingRunnable)
         }
