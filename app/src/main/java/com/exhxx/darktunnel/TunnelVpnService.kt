@@ -98,7 +98,7 @@ class TunnelVpnService : VpnService() {
                     }
                     """
                 }
-                1 -> { // VLESS - WebSocket
+                1 -> { // VLESS - WebSocket (مع السماح بالشهادات الوهمية)
                     outboundConfig = """
                     {
                       "protocol": "vless",
@@ -108,13 +108,13 @@ class TunnelVpnService : VpnService() {
                       "streamSettings": {
                         "network": "ws",
                         "security": "tls",
-                        "tlsSettings": { "serverName": "$sni" },
+                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
                         "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
                       }
                     }
                     """
                 }
-                2 -> { // VMess - WebSocket (مع إضافة alterId)
+                2 -> { // VMess - WebSocket (مع السماح بالشهادات الوهمية)
                     outboundConfig = """
                     {
                       "protocol": "vmess",
@@ -124,13 +124,13 @@ class TunnelVpnService : VpnService() {
                       "streamSettings": {
                         "network": "ws",
                         "security": "tls",
-                        "tlsSettings": { "serverName": "$sni" },
+                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
                         "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
                       }
                     }
                     """
                 }
-                3 -> { // Trojan + WS + Proxy
+                3 -> { // Trojan + WS + Proxy (مع السماح بالشهادات الوهمية)
                     outboundConfig = """
                     {
                       "protocol": "trojan",
@@ -140,7 +140,7 @@ class TunnelVpnService : VpnService() {
                       "streamSettings": {
                         "network": "ws",
                         "security": "tls",
-                        "tlsSettings": { "serverName": "$sni" },
+                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
                         "wsSettings": { "path": "$path", "headers": { "Host": "$host", "Custom-Payload": "$parsedPayload" } }
                       }
                     }
