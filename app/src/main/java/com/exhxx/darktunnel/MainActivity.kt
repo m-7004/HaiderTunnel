@@ -24,7 +24,7 @@ class MainActivity : Activity() {
         etUuid = findViewById(R.id.etUuid)
         etPayload = findViewById(R.id.etPayload)
 
-        // تحميل الإعدادات المحفوظة تلقائياً عند فتح التطبيق
+        // جلب البيانات المحفوظة تلقائيا لمنع تصفير الحقول
         val prefs = getSharedPreferences("DarkTunnelPrefs", Context.MODE_PRIVATE)
         etServer.setText(prefs.getString("SERVER", ""))
         etPort.setText(prefs.getString("PORT", ""))
@@ -33,7 +33,7 @@ class MainActivity : Activity() {
 
         val btnConnect = findViewById<Button>(R.id.btnConnect)
         btnConnect.setOnClickListener {
-            // حفظ الإعدادات فوراً في ذاكرة الهاتف الدائمة كي لا تختفي
+            // حفظ البيانات فوراً في ذاكرة الهاتف الدائمة
             val editor = prefs.edit()
             editor.putString("SERVER", etServer.text.toString())
             editor.putString("PORT", etPort.text.toString())

@@ -17,18 +17,16 @@ class TunnelVpnService : VpnService() {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("DarkTunnel Pro")
                 .setContentText("Connected to Server: $server")
-                .setSmallIcon(android.R.drawable.ic_secure) // <-- هذا السطر الذي كان ينقصنا!
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("DarkTunnel Pro")
                 .setContentText("Connected to Server: $server")
-                .setSmallIcon(android.R.drawable.ic_secure)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         }
         startForeground(1, notification)
-        
-        // هنا سيتم تشغيل ملف الـ Xray لاحقاً
         
         return START_STICKY
     }
