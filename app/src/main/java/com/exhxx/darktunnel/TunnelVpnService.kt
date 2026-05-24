@@ -36,7 +36,8 @@ class TunnelVpnService : VpnService() {
             isRunning = true
             sendStateBroadcast(true)
             
-            showNotification("Connected to: $server 🔑")
+            // تحديث الإشعار فوراً ليُظهر الآي بي الخاص بسيرفرك
+            showNotification(server)
 
             Thread {
                 try {
@@ -57,13 +58,12 @@ class TunnelVpnService : VpnService() {
             builder.setSession("DarkTunnelPro")
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
-            builder.addDnsServer("8.8.8.8")
-            builder.addDnsServer("1.1.1.1")
             
+            // الحل الجذري للإنترنت: توجيه ذكي للتطبيقات بدلاً من الثقب الأسود
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
             }
-            builder.addRoute("0.0.0.0", 0) 
+            
             vpnInterface = builder.establish()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -82,10 +82,9 @@ class TunnelVpnService : VpnService() {
             }
             Runtime.getRuntime().exec("chmod 755 ${xrayBinary.absolutePath}").waitFor()
 
-            // تنظيف نص الـ Payload من أي علامات زائدة لجعله Host صالح للنواة
             val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
 
-            // هيكلة ملف الـ config لدعم VLESS TCP Direct مع حقن الـ Payload كـ HTTP Camouflage
+            // حقن البايلود "HTTP/78 2026" لكي يقبله سكربت البايثون الخاص بك فوراً
             val config = """
             {
               "log": { "loglevel": "warning" },
@@ -121,9 +120,8 @@ class TunnelVpnService : VpnService() {
                           "path": ["/"],
                           "headers": {
                             "Host": ["$cleanHost"],
-                            "User-Agent": ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"],
-                            "Connection": ["keep-alive"],
-                            "Pragma": ["no-cache"]
+                            "User-Agent": ["Mozilla/5.0"],
+                            "X-Custom-Payload": ["HTTP/78 2026"]
                           }
                         }
                       }
@@ -156,8 +154,9 @@ class TunnelVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun showNotification(text: String) {
+    private fun showNotification(serverIp: String) {
         createNotificationChannel()
+        val text = "Server IP: $serverIp 🟢"
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("DarkTunnel Pro")
@@ -171,6 +170,10 @@ class TunnelVpnService : VpnService() {
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         }
+        
+        // إجبار النظام على تحديث الإشعار فوراً
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(1, notification)
         startForeground(1, notification)
     }
 
