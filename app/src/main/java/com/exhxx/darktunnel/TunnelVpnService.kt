@@ -9,6 +9,10 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URL
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -22,7 +26,7 @@ class TunnelVpnService : VpnService() {
         val action = intent?.action
 
         if (action == "ACTION_STOP") {
-            stopVpnService()
+            stopVpnService("DISCONNECTED")
             return START_NOT_STICKY
         }
 
@@ -31,16 +35,53 @@ class TunnelVpnService : VpnService() {
             val uuid = intent.getStringExtra("UUID") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
             
-            isRunning = true
-            sendStateBroadcast(true)
-            showNotification(serverInput)
+            // منع الاتصال فوراً إذا كان السيرفر فارغاً لتخفيف الضغط
+            if (serverInput.trim().isEmpty()) {
+                stopVpnService("FAILED")
+                return START_NOT_STICKY
+            }
+
+            showNotification("Verifying connection...")
 
             Thread {
                 try {
+                    // تشغيل النواة فقط (بدون إظهار علامة الـ VPN)
                     startXrayEngine(serverInput, uuid, payloadRaw)
-                    setupVpnInterface()
+                    
+                    // انتظار النواة لفتح المنفذ
+                    Thread.sleep(1500)
+                    
+                    // الفحص القاسي: إرسال طلب إنترنت حصرياً عبر منفذ Xray
+                    var isReallyConnected = false
+                    for (i in 1..6) { 
+                        try {
+                            val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
+                            val url = URL("http://cp.cloudflare.com/generate_204")
+                            val conn = url.openConnection(proxy) as HttpURLConnection
+                            conn.connectTimeout = 2000
+                            conn.readTimeout = 2000
+                            val code = conn.responseCode
+                            if (code == 204 || code == 200) {
+                                isReallyConnected = true
+                                break
+                            }
+                        } catch (e: Exception) {
+                            Thread.sleep(1000)
+                        }
+                    }
+
+                    // إذا نجح الإنترنت بالعبور من النواة، نظهر علامة الـ VPN!
+                    if (isReallyConnected) {
+                        setupVpnInterface()
+                        isRunning = true
+                        showNotification("Connected 🟢")
+                        sendStateBroadcast(true, "CONNECTED")
+                    } else {
+                        stopVpnService("FAILED")
+                    }
+                    
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    stopVpnService("FAILED")
                 }
             }.start()
         }
@@ -68,7 +109,6 @@ class TunnelVpnService : VpnService() {
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val logFile = File(filesDir, "xray_error.log").absolutePath
             
-            // استخراج الآي بي والبورت من الحقل المدمج ذكياً
             var server = serverInput
             var port = "80"
             if (serverInput.contains(":")) {
@@ -95,15 +135,7 @@ class TunnelVpnService : VpnService() {
                     "network": "tcp",
                     "security": "none",
                     "tcpSettings": {
-                      "header": { 
-                        "type": "http", 
-                        "request": { 
-                          "version": "1.1", 
-                          "method": "GET", 
-                          "path": ["/"], 
-                          "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } 
-                        } 
-                      }
+                      "header": { "type": "http", "request": { "version": "1.1", "method": "GET", "path": ["/"], "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } } }
                     }
                   }
                 }
@@ -120,27 +152,27 @@ class TunnelVpnService : VpnService() {
         } catch (e: Exception) {}
     }
 
-    private fun stopVpnService() {
+    private fun stopVpnService(msg: String) {
         isRunning = false
-        sendStateBroadcast(false)
+        sendStateBroadcast(false, msg)
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
         stopForeground(true)
         stopSelf()
     }
 
-    private fun showNotification(serverIp: String) {
+    private fun showNotification(msg: String) {
         createNotificationChannel()
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("@exhxx78 Pro")
-                .setContentText("Connected to $serverIp 🟢")
+                .setContentText(msg)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("@exhxx78 Pro")
-                .setContentText("Connected to $serverIp 🟢")
+                .setContentText(msg)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         }
@@ -157,13 +189,16 @@ class TunnelVpnService : VpnService() {
         }
     }
 
-    private fun sendStateBroadcast(running: Boolean) {
-        val intent = Intent("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS").apply { putExtra("RUNNING", running) }
+    private fun sendStateBroadcast(running: Boolean, msg: String = "") {
+        val intent = Intent("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS").apply { 
+            putExtra("RUNNING", running)
+            putExtra("MSG", msg)
+        }
         sendBroadcast(intent)
     }
 
     override fun onDestroy() {
-        stopVpnService()
+        stopVpnService("DISCONNECTED")
         super.onDestroy()
     }
 }

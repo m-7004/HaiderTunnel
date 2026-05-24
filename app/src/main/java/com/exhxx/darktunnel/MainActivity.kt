@@ -16,6 +16,10 @@ import android.os.Looper
 import android.text.Html
 import android.view.View
 import android.widget.*
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,13 +40,17 @@ class MainActivity : Activity() {
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("RUNNING", false) ?: false
+            val statusMsg = intent?.getStringExtra("MSG") ?: ""
             
             isVerifying = false
             if (isRunning) {
                 triggerConnectedLogs()
             } else {
-                if (btnConnect.text.toString() == "DISCONNECT" || btnConnect.text.toString() == "VERIFYING...") {
-                     triggerDisconnectLogs()
+                if (statusMsg == "FAILED") {
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("<font color='#FF5252'>Unable to detect internet connection [$time]</font><br/>")
+                } else if (statusMsg == "DISCONNECTED") {
+                    triggerDisconnectLogs()
                 }
             }
             updateUi(isRunning)
@@ -76,20 +84,18 @@ class MainActivity : Activity() {
 
         btnClearLogs.setOnClickListener { tvLogs.text = "" }
 
-        // الدالة الجديدة: فحص حقيقي بدون أي أرقام وهمية
+        // فحص البنج الحقيقي من داخل بروكسي الـ Xray (127.0.0.1:10809)
         pingRunnable = object : Runnable {
             override fun run() {
                 if (TunnelVpnService.isRunning) {
                     Thread {
-                        val pingMs = executePing()
+                        val pingMs = executeProxyPing()
                         runOnUiThread {
                             val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                             if (pingMs != -1) {
-                                // البايلود صحيح واكو إنترنت
                                 val color = if (pingMs <= 100) "#00E676" else "#FF5252"
                                 appendHtmlLog("HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>")
                             } else {
-                                // البايلود غلط والسيرفر قطع النت
                                 appendHtmlLog("Unable to detect internet connection [$time]<br/>")
                             }
                         }
@@ -127,16 +133,19 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun executePing(): Int {
+    private fun executeProxyPing(): Int {
         try {
             val start = System.currentTimeMillis()
-            // فحص اتصال حقيقي بسيرفرات جوجل
-            val process = Runtime.getRuntime().exec("ping -c 1 -W 2 8.8.8.8")
-            if (process.waitFor() == 0) {
+            val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
+            val url = URL("http://cp.cloudflare.com/generate_204")
+            val conn = url.openConnection(proxy) as HttpURLConnection
+            conn.connectTimeout = 2000
+            conn.readTimeout = 2000
+            if (conn.responseCode == 204 || conn.responseCode == 200) {
                 return (System.currentTimeMillis() - start).toInt()
             }
         } catch (e: Exception) {}
-        return -1 // إذا فشل الاتصال يرجع -1 (لا يوجد نت)
+        return -1
     }
 
     private fun appendHtmlLog(htmlText: String) {
@@ -157,13 +166,12 @@ class MainActivity : Activity() {
     private fun triggerConnectedLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         appendHtmlLog("Connection established [$time]<br/>")
-        appendHtmlLog("<font color='#FFF'>Connected [$time]</font><br/>")
+        appendHtmlLog("<font color='#00E676'>Connected [$time]</font><br/>")
     }
 
     private fun triggerDisconnectLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
         appendHtmlLog("Closing client connection [$time]<br/>")
-        appendHtmlLog("Client connection closed [$time]<br/>")
         appendHtmlLog("<font color='#FF5252'>Disconnected [$time]</font><br/>")
     }
 
