@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#0D0D0D"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Haider Tunnel"
+        android:textColor="#FFFFFF"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="30dp"/>
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Server" android:textColor="#AAAAAA" android:textSize="12sp"/>
+    <EditText android:id="@+id/et_server" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="51.254.130.47" android:textColor="#FFFFFF" android:backgroundTint="#333333" android:layout_marginBottom="12dp"/>
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Port" android:textColor="#AAAAAA" android:textSize="12sp"/>
+    <EditText android:id="@+id/et_port" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="80" android:textColor="#FFFFFF" android:backgroundTint="#333333" android:inputType="number" android:layout_marginBottom="12dp"/>
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="UUID" android:textColor="#AAAAAA" android:textSize="12sp"/>
+    <EditText android:id="@+id/et_uuid" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="free.facebook.com" android:textColor="#FFFFFF" android:backgroundTint="#333333" android:layout_marginBottom="12dp"/>
+
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Payload" android:textColor="#AAAAAA" android:textSize="12sp"/>
+    <EditText android:id="@+id/et_payload" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="HTTP/78 2026 HTTP/1.1 300 ok" android:textColor="#FFFFFF" android:backgroundTint="#333333" android:layout_marginBottom="30dp"/>
+
+    <TextView android:id="@+id/tv_status" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="غير متصل" android:textColor="#FF4444" android:gravity="center" android:textSize="16sp" android:layout_marginBottom="20dp"/>
+
+    <Button android:id="@+id/btn_connect" android:layout_width="match_parent" android:layout_height="60dp" android:text="CONNECT" android:textColor="#FFFFFF" android:backgroundTint="#7B2FBE" android:textSize="18sp" android:textStyle="bold"/>
+
+</LinearLayout>
