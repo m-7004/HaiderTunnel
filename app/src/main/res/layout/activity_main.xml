@@ -7,7 +7,7 @@
         android:text="@exhxx78" android:textColor="#E5E5EA" android:textSize="22sp" 
         android:textStyle="bold" android:layout_gravity="end" android:layout_marginBottom="20dp" android:layout_marginTop="10dp"/>
 
-    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:scrollbars="none">
+    <ScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:scrollbars="none">
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="target server" android:textColor="#8E8E93" android:textSize="12sp" android:layout_gravity="end" android:layout_marginBottom="2dp"/>
@@ -22,16 +22,14 @@
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="payload" android:textColor="#8E8E93" android:textSize="12sp" android:layout_gravity="end" android:layout_marginBottom="2dp"/>
             <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="60dp" android:textColor="#FFF" android:background="#1C1C1E" android:padding="10dp" android:layout_marginBottom="12dp"/>
 
-            <CheckBox android:id="@+id/cbAutoConnect" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Connect" android:textColor="#8E8E93" android:layout_gravity="center" android:layout_marginBottom="10dp" android:buttonTint="#B388FF"/>
+            <CheckBox android:id="@+id/cbAutoConnect" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Connect" android:textColor="#8E8E93" android:layout_gravity="center" android:layout_marginBottom="15dp" android:buttonTint="#B388FF"/>
         </LinearLayout>
     </ScrollView>
 
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">
-        <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="50dp" android:text="CONNECT" android:textColor="#FFF" android:backgroundTint="#B388FF" android:textStyle="bold" android:layout_marginBottom="8dp"/>
-        
-        <ScrollView android:id="@+id/logScroll" android:layout_width="match_parent" android:layout_height="140dp" android:background="#000" android:padding="8dp">
-            <TextView android:id="@+id/tvLogs" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#8E8E93" android:textSize="11sp" android:fontFamily="monospace" android:text="Ready for connection..."/>
-        </ScrollView>
-    </LinearLayout>
+    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="50dp" android:text="CONNECT" android:textColor="#FFF" android:backgroundTint="#B388FF" android:textStyle="bold" android:layout_marginBottom="15dp"/>
+    
+    <ScrollView android:id="@+id/logScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="#000" android:padding="8dp">
+        <TextView android:id="@+id/tvLogs" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#8E8E93" android:textSize="11sp" android:fontFamily="monospace" android:text="Ready for connection..."/>
+    </ScrollView>
 
 </LinearLayout>
