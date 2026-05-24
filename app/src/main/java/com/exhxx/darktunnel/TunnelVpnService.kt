@@ -27,28 +27,21 @@ class TunnelVpnService : VpnService() {
         }
 
         if (action == "ACTION_START") {
-            val protocolIndex = intent.getIntExtra("PROTOCOL", 0)
             val server = intent.getStringExtra("SERVER") ?: ""
             val port = intent.getStringExtra("PORT") ?: "80"
             val uuid = intent.getStringExtra("UUID") ?: ""
-            val path = intent.getStringExtra("PATH") ?: "/"
-            val sni = intent.getStringExtra("SNI") ?: ""
-            val host = intent.getStringExtra("HOST") ?: ""
-            val proxy = intent.getStringExtra("PROXY") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
             
             isRunning = true
             sendStateBroadcast(true)
-            showNotification(server, "Connecting...")
+            showNotification(server)
 
             Thread {
                 try {
-                    startXrayEngine(protocolIndex, server, port, uuid, path, sni, host, proxy, payloadRaw)
+                    startXrayEngine(server, port, uuid, payloadRaw)
                     setupVpnInterface()
-                    showNotification(server, "Connected 🟢")
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    showNotification(server, "Error 🔴")
                 }
             }.start()
         }
@@ -71,82 +64,12 @@ class TunnelVpnService : VpnService() {
         } catch (e: Exception) {}
     }
 
-    private fun startXrayEngine(protocolIndex: Int, server: String, port: String, uuid: String, path: String, sni: String, host: String, proxy: String, payloadRaw: String) {
+    private fun startXrayEngine(server: String, port: String, uuid: String, payloadRaw: String) {
         try {
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val logFile = File(filesDir, "xray_error.log").absolutePath
             
             val parsedPayload = payloadRaw.replace("[crlf]", "\\r\\n").replace("[host_port]", "$server:$port").replace("\"", "\\\"")
-
-            var outboundConfig = ""
-
-            when (protocolIndex) {
-                0 -> { // VLESS - TCP Direct
-                    outboundConfig = """
-                    {
-                      "protocol": "vless",
-                      "settings": {
-                        "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none" } ] } ]
-                      },
-                      "streamSettings": {
-                        "network": "tcp",
-                        "security": "none",
-                        "tcpSettings": {
-                          "header": { "type": "http", "request": { "version": "1.1", "method": "GET", "path": ["/"], "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } } }
-                        }
-                      }
-                    }
-                    """
-                }
-                1 -> { // VLESS - WebSocket (مع السماح بالشهادات الوهمية)
-                    outboundConfig = """
-                    {
-                      "protocol": "vless",
-                      "settings": {
-                        "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 443}, "users": [ { "id": "$uuid", "encryption": "none" } ] } ]
-                      },
-                      "streamSettings": {
-                        "network": "ws",
-                        "security": "tls",
-                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
-                        "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
-                      }
-                    }
-                    """
-                }
-                2 -> { // VMess - WebSocket (مع السماح بالشهادات الوهمية)
-                    outboundConfig = """
-                    {
-                      "protocol": "vmess",
-                      "settings": {
-                        "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 443}, "users": [ { "id": "$uuid", "alterId": 0, "security": "auto" } ] } ]
-                      },
-                      "streamSettings": {
-                        "network": "ws",
-                        "security": "tls",
-                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
-                        "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
-                      }
-                    }
-                    """
-                }
-                3 -> { // Trojan + WS + Proxy (مع السماح بالشهادات الوهمية)
-                    outboundConfig = """
-                    {
-                      "protocol": "trojan",
-                      "settings": {
-                        "servers": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 443}, "password": "$uuid" } ]
-                      },
-                      "streamSettings": {
-                        "network": "ws",
-                        "security": "tls",
-                        "tlsSettings": { "serverName": "$sni", "allowInsecure": true },
-                        "wsSettings": { "path": "$path", "headers": { "Host": "$host", "Custom-Payload": "$parsedPayload" } }
-                      }
-                    }
-                    """
-                }
-            }
 
             val config = """
             {
@@ -154,7 +77,29 @@ class TunnelVpnService : VpnService() {
               "inbounds": [
                 { "port": 10809, "listen": "0.0.0.0", "protocol": "http", "settings": { "allowTransparent": false } }
               ],
-              "outbounds": [ $outboundConfig ]
+              "outbounds": [
+                {
+                  "protocol": "vless",
+                  "settings": {
+                    "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none" } ] } ]
+                  },
+                  "streamSettings": {
+                    "network": "tcp",
+                    "security": "none",
+                    "tcpSettings": {
+                      "header": { 
+                        "type": "http", 
+                        "request": { 
+                          "version": "1.1", 
+                          "method": "GET", 
+                          "path": ["/"], 
+                          "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } 
+                        } 
+                      }
+                    }
+                  }
+                }
+              ]
             }
             """.trimIndent()
             
@@ -176,18 +121,18 @@ class TunnelVpnService : VpnService() {
         stopSelf()
     }
 
-    private fun showNotification(serverIp: String, status: String) {
+    private fun showNotification(serverIp: String) {
         createNotificationChannel()
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("@exhxx78 Pro")
-                .setContentText("$serverIp - $status")
+                .setContentText("Connected to $serverIp 🟢")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("@exhxx78 Pro")
-                .setContentText("$serverIp - $status")
+                .setContentText("Connected to $serverIp 🟢")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         }
