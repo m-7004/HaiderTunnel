@@ -9,6 +9,10 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.URL
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -31,9 +35,13 @@ class TunnelVpnService : VpnService() {
             val uuid = intent.getStringExtra("UUID") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
 
+            if (serverInput.trim().isEmpty()) {
+                stopVpnService("FAILED")
+                return START_NOT_STICKY
+            }
+
             Thread {
                 try {
-                    // تشغيل النواة وإنشاء النفق فوراً بدون أي شروط تعجيزية
                     startXrayEngine(serverInput, uuid, payloadRaw)
                     setupVpnInterface()
                     
@@ -76,8 +84,45 @@ class TunnelVpnService : VpnService() {
                 server = parts[0]
                 port = parts[1]
             }
-            
-            val parsedPayload = payloadRaw.replace("[crlf]", "\\r\\n").replace("[host_port]", "$server:$port").replace("\"", "\\\"")
+
+            var method = "GET"
+            var path = "/"
+            var headersJson = """"Host": ["$server"], "Connection": ["keep-alive"]"""
+
+            val raw = payloadRaw.replace("[host_port]", "$server:$port")
+            if (raw.isNotBlank()) {
+                val lines = raw.split("[crlf]", "\n")
+                val firstLine = lines[0].trim()
+                
+                // هنا الذكاء: نأخذ مفتاحك الكامل ونوزعه بذكاء حتى Xray يطبعه قطعة واحدة!
+                val firstSpace = firstLine.indexOf(" ")
+                if (firstSpace != -1) {
+                    method = firstLine.substring(0, firstSpace).trim() // مثلا: HTTP/78
+                    
+                    // نأخذ باقي السطر (مثلا: 2026 300 ok) ونحذف منه HTTP/1.1 حتى لا تتكرر
+                    var remaining = firstLine.substring(firstSpace + 1)
+                    remaining = remaining.replace(Regex("HTTP/1\\.[0-9]", RegexOption.IGNORE_CASE), "").trim()
+                    
+                    if (remaining.isNotBlank()) {
+                        path = remaining
+                    }
+                } else {
+                    method = firstLine
+                }
+
+                val customHeaders = mutableListOf<String>()
+                for (i in 1 until lines.size) {
+                    val line = lines[i].trim()
+                    if (line.contains(":")) {
+                        val key = line.substringBefore(":").trim()
+                        val value = line.substringAfter(":").trim().replace("\"", "\\\"")
+                        customHeaders.add("\"$key\": [\"$value\"]")
+                    }
+                }
+                if (customHeaders.isNotEmpty()) {
+                    headersJson = customHeaders.joinToString(", ")
+                }
+            }
 
             val config = """
             {
@@ -95,7 +140,15 @@ class TunnelVpnService : VpnService() {
                     "network": "tcp",
                     "security": "none",
                     "tcpSettings": {
-                      "header": { "type": "http", "request": { "version": "1.1", "method": "GET", "path": ["/"], "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } } }
+                      "header": { 
+                        "type": "http", 
+                        "request": { 
+                          "version": "1.1", 
+                          "method": "$method", 
+                          "path": ["$path"], 
+                          "headers": { $headersJson } 
+                        } 
+                      }
                     }
                   }
                 }
