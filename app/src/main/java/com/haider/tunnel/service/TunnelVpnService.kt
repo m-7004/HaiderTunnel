@@ -4,13 +4,17 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import com.haider.tunnel.proxy.ProxyManager
-import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.net.InetSocketAddress
+import java.nio.ByteBuffer
+import java.nio.channels.DatagramChannel
 
 class TunnelVpnService : VpnService() {
 
     private var vpnInterface: ParcelFileDescriptor? = null
     private var proxyManager: ProxyManager? = null
-    private var xrayProcess: Process? = null
+    private var running = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val server = intent?.getStringExtra("server") ?: return START_NOT_STICKY
@@ -24,71 +28,24 @@ class TunnelVpnService : VpnService() {
 
     private fun startTunnel(server: String, port: Int, uuid: String, payload: String) {
         try {
-            // نسخ xray لمجلد قابل للتنفيذ
-            val xrayFile = File(filesDir, "xray")
-            if (!xrayFile.exists()) {
-                assets.open("xray").use { input ->
-                    xrayFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                xrayFile.setExecutable(true)
-            }
-
-            // كتابة config.json
-            val config = """
-{
-  "log": {"loglevel": "none"},
-  "inbounds": [
-    {
-      "listen": "127.0.0.1",
-      "port": 10808,
-      "protocol": "socks",
-      "settings": {"auth": "noauth", "udp": true}
-    }
-  ],
-  "outbounds": [
-    {
-      "protocol": "vless",
-      "settings": {
-        "vnext": [{
-          "address": "$server",
-          "port": $port,
-          "users": [{
-            "id": "$uuid",
-            "encryption": "none"
-          }]
-        }]
-      },
-      "streamSettings": {
-        "network": "tcp",
-        "security": "none"
-      }
-    }
-  ]
-}
-""".trimIndent()
-
-            val configFile = File(filesDir, "config.json")
-            configFile.writeText(config)
-
-            // تشغيل proxy للـ payload
+            // تشغيل proxy
             proxyManager = ProxyManager(server, port, uuid, payload)
             proxyManager?.start()
 
-            // تشغيل xray
-            xrayProcess = ProcessBuilder(xrayFile.absolutePath, "run", "-c", configFile.absolutePath)
-                .redirectErrorStream(true)
-                .start()
+            Thread.sleep(500)
 
             // إعداد VPN
             val builder = Builder()
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
+            builder.addDnsServer("1.1.1.1")
             builder.addRoute("0.0.0.0", 0)
             builder.setSession("Haider Tunnel")
+            builder.protect(proxyManager!!.localPort)
+
             vpnInterface = builder.establish()
+            running = true
 
         } catch (e: Exception) {
             e.printStackTrace()
@@ -96,8 +53,8 @@ class TunnelVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        running = false
         proxyManager?.stop()
-        xrayProcess?.destroy()
         vpnInterface?.close()
         super.onDestroy()
     }
