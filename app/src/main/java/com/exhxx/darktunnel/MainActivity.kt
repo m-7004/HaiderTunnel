@@ -33,12 +33,23 @@ class MainActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var pingRunnable: Runnable
+    private var isVerifying = false
 
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("RUNNING", false) ?: false
-            if (isRunning && btnConnect.text.toString() == "CONNECT") {
+            val statusMsg = intent?.getStringExtra("MSG") ?: ""
+            
+            isVerifying = false
+            if (isRunning) {
                 triggerConnectedLogs()
+            } else {
+                if (statusMsg == "TIMEOUT") {
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("<font color='#FF5252'>Payload Blocked! Connection Failed [$time]</font><br/>")
+                } else if (statusMsg == "DISCONNECTED") {
+                    triggerDisconnectLogs()
+                }
             }
             updateUi(isRunning)
         }
@@ -69,10 +80,7 @@ class MainActivity : Activity() {
         etPayload.setText(prefs.getString("PAYLOAD", ""))
         cbAutoConnect.isChecked = prefs.getBoolean("AUTO_CONNECT", false)
 
-        // برمجة زر مسح السجلات
-        btnClearLogs.setOnClickListener {
-            tvLogs.text = ""
-        }
+        btnClearLogs.setOnClickListener { tvLogs.text = "" }
 
         pingRunnable = object : Runnable {
             override fun run() {
@@ -92,21 +100,13 @@ class MainActivity : Activity() {
 
         updateUi(TunnelVpnService.isRunning)
 
-        if (cbAutoConnect.isChecked && !TunnelVpnService.isRunning) {
-            val intent = VpnService.prepare(this)
-            if (intent == null) { 
-                triggerConnectingLogs()
-                startVpn() 
-            }
-        }
-
         btnConnect.setOnClickListener {
             if (btnConnect.text.toString() == "DISCONNECT") {
-                triggerDisconnectLogs()
                 val stopIntent = Intent(this, TunnelVpnService::class.java).apply { action = "ACTION_STOP" }
                 startService(stopIntent)
                 updateUi(false)
             } else {
+                // تم مسح شرط إلزامية البايلود مالت الواجهة؛ التطبيق الآن يمرر أي شيء يكتبه حيدر بكل حرية
                 val editor = prefs.edit()
                 editor.putString("SERVER", etServer.text.toString())
                 editor.putString("UUID", etUuid.text.toString())
@@ -118,6 +118,8 @@ class MainActivity : Activity() {
                 if (intent != null) {
                     startActivityForResult(intent, 1)
                 } else {
+                    isVerifying = true
+                    updateUi(false)
                     triggerConnectingLogs()
                     startVpn()
                 }
@@ -129,8 +131,7 @@ class MainActivity : Activity() {
         try {
             val start = System.currentTimeMillis()
             val process = Runtime.getRuntime().exec("ping -c 1 -W 1 8.8.8.8")
-            val exitCode = process.waitFor()
-            if (exitCode == 0) { return (System.currentTimeMillis() - start).toInt().coerceAtMost(1200) }
+            if (process.waitFor() == 0) return (System.currentTimeMillis() - start).toInt().coerceAtMost(1200)
         } catch (e: Exception) {}
         return (60..140).random()
     }
@@ -147,19 +148,16 @@ class MainActivity : Activity() {
     private fun triggerConnectingLogs() {
         tvLogs.text = ""
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Connecting to ${etServer.text} [$time]<br/>")
+        appendHtmlLog("Verifying Connection to ${etServer.text} [$time]<br/>")
     }
 
     private fun triggerConnectedLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("<font color='#00E676'>Connection established [$time]</font><br/>")
-        appendHtmlLog("<font color='#FFF'>Connected [$time]</font><br/>")
+        appendHtmlLog("<font color='#00E676'>True Connection Established [$time]</font><br/>")
     }
 
     private fun triggerDisconnectLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Closing client connection [$time]<br/>")
-        appendHtmlLog("Client connection closed [$time]<br/>")
         appendHtmlLog("<font color='#FF5252'>Disconnected [$time]</font><br/>")
     }
 
@@ -179,7 +177,6 @@ class MainActivity : Activity() {
     }
 
     private fun startVpn() {
-        updateUi(true)
         val intent = Intent(this, TunnelVpnService::class.java).apply {
             action = "ACTION_START"
             putExtra("SERVER", etServer.text.toString())
@@ -190,9 +187,9 @@ class MainActivity : Activity() {
     }
 
     private fun updateUi(isRunning: Boolean) {
-        val alpha = if (isRunning) 0.5f else 1.0f
+        val alpha = if (isRunning || isVerifying) 0.5f else 1.0f
         arrayOf(etServer, etUuid, etPayload, cbAutoConnect).forEach { 
-            it.isEnabled = !isRunning 
+            it.isEnabled = ! (isRunning || isVerifying)
             it.alpha = alpha
         }
 
@@ -201,6 +198,11 @@ class MainActivity : Activity() {
             btnConnect.setBackgroundColor(Color.parseColor("#1C1C1E"))
             btnConnect.setTextColor(Color.parseColor("#FF5252"))
             mainHandler.post(pingRunnable)
+        } else if (isVerifying) {
+            btnConnect.text = "VERIFYING..."
+            btnConnect.setBackgroundColor(Color.parseColor("#555555"))
+            btnConnect.setTextColor(Color.WHITE)
+            mainHandler.removeCallbacks(pingRunnable)
         } else {
             btnConnect.text = "CONNECT"
             btnConnect.setBackgroundColor(Color.parseColor("#B388FF"))
