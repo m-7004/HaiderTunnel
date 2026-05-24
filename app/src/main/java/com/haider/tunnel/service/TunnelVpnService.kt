@@ -16,6 +16,9 @@ class TunnelVpnService : VpnService() {
     private var running = false
 
     companion object {
+        init {
+            System.loadLibrary("gojni")
+        }
         const val ACTION_STOP = "STOP"
     }
 
@@ -31,11 +34,7 @@ class TunnelVpnService : VpnService() {
         val payload = intent.getStringExtra("payload") ?: ""
 
         startForegroundNotification()
-
-        Thread {
-            startTunnel(server, port, uuid, payload)
-        }.start()
-
+        Thread { startTunnel(server, port, uuid, payload) }.start()
         return START_STICKY
     }
 
@@ -43,8 +42,7 @@ class TunnelVpnService : VpnService() {
         val channelId = "haider_vpn"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                channelId,
-                "Haider Tunnel VPN",
+                channelId, "Haider Tunnel VPN",
                 NotificationManager.IMPORTANCE_LOW
             )
             getSystemService(NotificationManager::class.java)
@@ -52,7 +50,7 @@ class TunnelVpnService : VpnService() {
         }
         val notification = Notification.Builder(this, channelId)
             .setContentTitle("Haider Tunnel")
-            .setContentText("جاري الاتصال...")
+            .setContentText("متصل ✓")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .build()
@@ -66,7 +64,7 @@ class TunnelVpnService : VpnService() {
             proxyManager?.start()
             Thread.sleep(1000)
 
-            // إعداد VPN interface
+            // إعداد VPN
             val builder = Builder()
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
@@ -75,11 +73,13 @@ class TunnelVpnService : VpnService() {
             builder.addRoute("0.0.0.0", 0)
             builder.setSession("Haider Tunnel")
             builder.setBlocking(true)
-
             vpnInterface = builder.establish()
             running = true
 
-            // هذا الـ loop يخلي الـ service شغالة
+            // تشغيل tun2socks
+            val fd = vpnInterface!!.fd
+            startTun2Socks(fd, "10.0.0.2", 24, "8.8.8.8", "socks5://127.0.0.1:1080")
+
             while (running && vpnInterface != null) {
                 Thread.sleep(1000)
             }
@@ -88,6 +88,14 @@ class TunnelVpnService : VpnService() {
             e.printStackTrace()
         }
     }
+
+    private external fun startTun2Socks(
+        fd: Int,
+        addr: String,
+        prefix: Int,
+        dns: String,
+        proxy: String
+    )
 
     override fun onDestroy() {
         running = false
