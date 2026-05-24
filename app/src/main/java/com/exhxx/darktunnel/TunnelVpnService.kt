@@ -57,10 +57,13 @@ class TunnelVpnService : VpnService() {
         try {
             val builder = Builder()
             builder.setSession("@exhxx78")
-            // حجم 1400 يمنع الـ Fragmentation على شبكات الهاتف
             builder.setMtu(1400)
             builder.addAddress("10.0.0.2", 24)
+            
+            // دي ان اس خارجي عالمي مرتب ونظيف (Cloudflare و Google)
+            builder.addDnsServer("1.1.1.1")
             builder.addDnsServer("8.8.8.8")
+            
             try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
@@ -117,10 +120,13 @@ class TunnelVpnService : VpnService() {
                 }
             }
 
-            // الكود الشامل: البايلود الذكي + سياسات DarkTunnel (Policy) + Mux + Sniffing
+            // توجيه ذكي: إجبار Xray على تشفير الـ DNS وتمريره عبر VLESS
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
+              "dns": {
+                "servers": [ "1.1.1.1", "8.8.8.8" ]
+              },
               "inbounds": [
                 {
                   "port": 10809,
@@ -139,6 +145,7 @@ class TunnelVpnService : VpnService() {
               ],
               "outbounds": [
                 {
+                  "tag": "proxy",
                   "protocol": "vless",
                   "settings": {
                     "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none", "level": 0 } ] } ]
@@ -159,8 +166,28 @@ class TunnelVpnService : VpnService() {
                     }
                   },
                   "mux": { "enabled": true, "concurrency": 8 }
+                },
+                {
+                  "tag": "direct",
+                  "protocol": "freedom",
+                  "settings": {}
                 }
               ],
+              "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                  {
+                    "type": "field",
+                    "port": 53,
+                    "outboundTag": "proxy"
+                  },
+                  {
+                    "type": "field",
+                    "network": "tcp,udp",
+                    "outboundTag": "proxy"
+                  }
+                ]
+              },
               "policy": {
                 "levels": {
                   "0": { "connIdle": 300, "handshake": 4, "uplinkOnly": 1, "downlinkOnly": 1 }
