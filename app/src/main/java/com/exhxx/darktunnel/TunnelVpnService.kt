@@ -9,10 +9,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.URL
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -61,7 +57,8 @@ class TunnelVpnService : VpnService() {
         try {
             val builder = Builder()
             builder.setSession("@exhxx78")
-            builder.setMtu(1500)
+            // حجم 1400 يمنع الـ Fragmentation على شبكات الهاتف
+            builder.setMtu(1400)
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
             try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
@@ -94,15 +91,11 @@ class TunnelVpnService : VpnService() {
                 val lines = raw.split("[crlf]", "\n")
                 val firstLine = lines[0].trim()
                 
-                // هنا الذكاء: نأخذ مفتاحك الكامل ونوزعه بذكاء حتى Xray يطبعه قطعة واحدة!
                 val firstSpace = firstLine.indexOf(" ")
                 if (firstSpace != -1) {
-                    method = firstLine.substring(0, firstSpace).trim() // مثلا: HTTP/78
-                    
-                    // نأخذ باقي السطر (مثلا: 2026 300 ok) ونحذف منه HTTP/1.1 حتى لا تتكرر
+                    method = firstLine.substring(0, firstSpace).trim()
                     var remaining = firstLine.substring(firstSpace + 1)
                     remaining = remaining.replace(Regex("HTTP/1\\.[0-9]", RegexOption.IGNORE_CASE), "").trim()
-                    
                     if (remaining.isNotBlank()) {
                         path = remaining
                     }
@@ -124,17 +117,31 @@ class TunnelVpnService : VpnService() {
                 }
             }
 
+            // الكود الشامل: البايلود الذكي + سياسات DarkTunnel (Policy) + Mux + Sniffing
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
               "inbounds": [
-                { "port": 10809, "listen": "0.0.0.0", "protocol": "http", "settings": { "allowTransparent": false } }
+                {
+                  "port": 10809,
+                  "listen": "0.0.0.0",
+                  "protocol": "http",
+                  "settings": { "allowTransparent": false },
+                  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+                },
+                {
+                  "port": 10808,
+                  "listen": "0.0.0.0",
+                  "protocol": "socks",
+                  "settings": { "auth": "noauth", "udp": true },
+                  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+                }
               ],
               "outbounds": [
                 {
                   "protocol": "vless",
                   "settings": {
-                    "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none" } ] } ]
+                    "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none", "level": 0 } ] } ]
                   },
                   "streamSettings": {
                     "network": "tcp",
@@ -150,9 +157,16 @@ class TunnelVpnService : VpnService() {
                         } 
                       }
                     }
-                  }
+                  },
+                  "mux": { "enabled": true, "concurrency": 8 }
                 }
-              ]
+              ],
+              "policy": {
+                "levels": {
+                  "0": { "connIdle": 300, "handshake": 4, "uplinkOnly": 1, "downlinkOnly": 1 }
+                },
+                "system": { "statsOutboundUplink": false, "statsOutboundDownlink": false }
+              }
             }
             """.trimIndent()
             
