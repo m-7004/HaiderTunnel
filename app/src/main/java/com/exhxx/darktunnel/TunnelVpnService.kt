@@ -54,7 +54,7 @@ class TunnelVpnService : VpnService() {
     private fun setupVpnInterface() {
         try {
             val builder = Builder()
-            builder.setSession("DarkTunnelPro")
+            builder.setSession("@exhxx78")
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
@@ -72,10 +72,9 @@ class TunnelVpnService : VpnService() {
     private fun startXrayEngine(server: String, port: String, uuid: String, payload: String) {
         try {
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
-            val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
             val logFile = File(filesDir, "xray_error.log").absolutePath
 
-            // تم إضافة مسار الـ Logs برمجياً ليقرأه التطبيق
+            // تم جعل حقل الـ User-Agent يستقبل قيمة حقل الـ Payload الأمامي بالكامل وبدون أي وسيط مدمج
             val config = """
             {
               "log": { 
@@ -113,8 +112,8 @@ class TunnelVpnService : VpnService() {
                           "method": "GET",
                           "path": ["/"],
                           "headers": {
-                            "Host": ["$cleanHost"],
-                            "User-Agent": ["HTTP/78 2026"],
+                            "Host": ["proxy.exhxx.com"],
+                            "User-Agent": ["$payload"],
                             "Connection": ["keep-alive"]
                           }
                         }
@@ -144,18 +143,17 @@ class TunnelVpnService : VpnService() {
         stopSelf()
     }
 
-    // الإشعار الذكي المتغير
     private fun showNotification(serverIp: String, status: String) {
         createNotificationChannel()
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
-                .setContentTitle("DarkTunnel Pro")
+                .setContentTitle("@exhxx78 Pro")
                 .setContentText("$serverIp - $status")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         } else {
             Notification.Builder(this)
-                .setContentTitle("DarkTunnel Pro")
+                .setContentTitle("@exhxx78 Pro")
                 .setContentText("$serverIp - $status")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()

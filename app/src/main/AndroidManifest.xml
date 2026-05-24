@@ -7,7 +7,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application 
-        android:label="DarkTunnel Pro" 
+        android:label="@exhxx78" 
         android:icon="@drawable/ic_logo"
         android:roundIcon="@drawable/ic_logo"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"

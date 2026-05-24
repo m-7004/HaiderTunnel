@@ -31,7 +31,6 @@ class MainActivity : Activity() {
     private lateinit var etPayload: EditText
     private lateinit var cbAutoConnect: CheckBox
     private lateinit var btnConnect: Button
-    private lateinit var btnLogs: Button
     private lateinit var tvPing: TextView
     private lateinit var tvLogs: TextView
     private lateinit var logScroll: ScrollView
@@ -57,7 +56,6 @@ class MainActivity : Activity() {
         etPayload = findViewById(R.id.etPayload)
         cbAutoConnect = findViewById(R.id.cbAutoConnect)
         btnConnect = findViewById(R.id.btnConnect)
-        btnLogs = findViewById(R.id.btnLogs)
         tvPing = findViewById(R.id.tvPing)
         tvLogs = findViewById(R.id.tvLogs)
         logScroll = findViewById(R.id.logScroll)
@@ -75,15 +73,6 @@ class MainActivity : Activity() {
         etPayload.setText(prefs.getString("PAYLOAD", ""))
         cbAutoConnect.isChecked = prefs.getBoolean("AUTO_CONNECT", false)
 
-        // ميزة إظهار وإخفاء نافذة السجلات
-        btnLogs.setOnClickListener {
-            if (logScroll.visibility == View.GONE) {
-                logScroll.visibility = View.VISIBLE
-            } else {
-                logScroll.visibility = View.GONE
-            }
-        }
-
         pingRunnable = object : Runnable {
             override fun run() {
                 if (TunnelVpnService.isRunning) {
@@ -91,7 +80,7 @@ class MainActivity : Activity() {
                         val pingResult = executePing()
                         runOnUiThread {
                             tvPing.text = "Ping: $pingResult"
-                            tvPing.setTextColor(if (pingResult.contains("Timeout") || pingResult.contains("Error")) Color.parseColor("#FF5252") else Color.parseColor("#00E676"))
+                            tvPing.setTextColor(if (pingResult.contains("Timeout") || pingResult.contains("Error")) Color.parseColor("#FF5252") else Color.parseColor("#FFC107"))
                         }
                     }.start()
                     pingHandler.postDelayed(this, 2000)
@@ -99,31 +88,24 @@ class MainActivity : Activity() {
             }
         }
 
-        // قارئ السجلات الحي
+        // تحديث وتمرير السجلات تلقائياً بدون تدخل المستخدم
         logRunnable = object : Runnable {
             override fun run() {
-                if (logScroll.visibility == View.VISIBLE) {
-                    val logFile = File(filesDir, "xray_error.log")
-                    if (logFile.exists()) {
-                        tvLogs.text = logFile.readText()
-                        logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
-                    } else {
-                        tvLogs.text = "No logs yet..."
-                    }
+                val logFile = File(filesDir, "xray_error.log")
+                if (logFile.exists()) {
+                    tvLogs.text = logFile.readText()
+                    logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
                 }
-                pingHandler.postDelayed(this, 2000)
+                pingHandler.postDelayed(this, 1500)
             }
         }
         pingHandler.post(logRunnable)
 
         updateUi(TunnelVpnService.isRunning)
 
-        // ميزة الاتصال التلقائي (Auto-Connect)
         if (cbAutoConnect.isChecked && !TunnelVpnService.isRunning) {
             val intent = VpnService.prepare(this)
-            if (intent == null) {
-                startVpn()
-            }
+            if (intent == null) { startVpn() }
         }
 
         btnConnect.setOnClickListener {
@@ -199,13 +181,15 @@ class MainActivity : Activity() {
         if (isRunning) {
             btnConnect.text = "DISCONNECT"
             btnConnect.setBackgroundColor(Color.parseColor("#D32F2F"))
+            btnConnect.setTextColor(Color.WHITE)
             pingHandler.post(pingRunnable)
         } else {
             btnConnect.text = "CONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2"))
+            btnConnect.setBackgroundColor(Color.parseColor("#FFC107"))
+            btnConnect.setTextColor(Color.parseColor("#1A1A1A"))
             pingHandler.removeCallbacks(pingRunnable)
             tvPing.text = "Ping: -- ms"
-            tvPing.setTextColor(Color.parseColor("#00FF00"))
+            tvPing.setTextColor(Color.parseColor("#FFC107"))
         }
     }
 }
