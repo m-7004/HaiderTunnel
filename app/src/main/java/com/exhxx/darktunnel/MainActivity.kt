@@ -1,10 +1,12 @@
 package com.exhxx.darktunnel
 
+import android.Manifest
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
@@ -37,6 +39,13 @@ class MainActivity : Activity() {
         etPayload = findViewById(R.id.etPayload)
         btnConnect = findViewById(R.id.btnConnect)
 
+        // طلب إذن الإشعارات تلقائياً لأندرويد 13 فما فوق لمنع اختفاء الإشعار
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+
         val prefs = getSharedPreferences("DarkTunnelPrefs", Context.MODE_PRIVATE)
         etServer.setText(prefs.getString("SERVER", ""))
         etPort.setText(prefs.getString("PORT", ""))
@@ -46,7 +55,6 @@ class MainActivity : Activity() {
         updateUi(TunnelVpnService.isRunning)
 
         btnConnect.setOnClickListener {
-            // فحص نص الزر لمعرفة الأمر الصحيح (تشغيل أم إيقاف)
             if (btnConnect.text.toString() == "DISCONNECT") {
                 val stopIntent = Intent(this, TunnelVpnService::class.java).apply {
                     action = "ACTION_STOP"
@@ -110,10 +118,10 @@ class MainActivity : Activity() {
     private fun updateUi(isRunning: Boolean) {
         if (isRunning) {
             btnConnect.text = "DISCONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F")) // أحمر للإيقاف
+            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F"))
         } else {
             btnConnect.text = "CONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2")) // بنفسجي للتشغيل
+            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2"))
         }
     }
 }

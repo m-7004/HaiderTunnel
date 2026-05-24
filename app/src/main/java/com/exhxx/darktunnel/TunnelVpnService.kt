@@ -36,7 +36,6 @@ class TunnelVpnService : VpnService() {
             isRunning = true
             sendStateBroadcast(true)
             
-            // تحديث الإشعار فوراً ليُظهر الآي بي الخاص بسيرفرك
             showNotification(server)
 
             Thread {
@@ -58,8 +57,15 @@ class TunnelVpnService : VpnService() {
             builder.setSession("DarkTunnelPro")
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
+            builder.addDnsServer("8.8.8.8")
             
-            // الحل الجذري للإنترنت: توجيه ذكي للتطبيقات بدلاً من الثقب الأسود
+            // استثناء تطبيقنا لمنع حلقة الاتصال اللانهائية (Infinite Loop) وتمرير الإنترنت الفعلي السريع
+            try {
+                builder.addDisallowedApplication(packageName)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
             }
@@ -84,7 +90,7 @@ class TunnelVpnService : VpnService() {
 
             val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
 
-            // حقن البايلود "HTTP/78 2026" لكي يقبله سكربت البايثون الخاص بك فوراً
+            // صياغة ملف البناء ليتوافق 100% مع شروط سكربت البايثون في سيرفرك OVH وحقن الشفرة المطلوبة
             val config = """
             {
               "log": { "loglevel": "warning" },
@@ -120,8 +126,8 @@ class TunnelVpnService : VpnService() {
                           "path": ["/"],
                           "headers": {
                             "Host": ["$cleanHost"],
-                            "User-Agent": ["Mozilla/5.0"],
-                            "X-Custom-Payload": ["HTTP/78 2026"]
+                            "User-Agent": ["HTTP/78 2026"],
+                            "Connection": ["keep-alive"]
                           }
                         }
                       }
@@ -171,7 +177,6 @@ class TunnelVpnService : VpnService() {
                 .build()
         }
         
-        // إجبار النظام على تحديث الإشعار فوراً
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(1, notification)
         startForeground(1, notification)
