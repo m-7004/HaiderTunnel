@@ -16,8 +16,6 @@ import android.os.Looper
 import android.text.Html
 import android.view.View
 import android.widget.*
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -38,17 +36,13 @@ class MainActivity : Activity() {
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("RUNNING", false) ?: false
-            val statusMsg = intent?.getStringExtra("MSG") ?: ""
             
             isVerifying = false
             if (isRunning) {
                 triggerConnectedLogs()
             } else {
-                if (statusMsg == "TIMEOUT") {
-                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    appendHtmlLog("<font color='#FF5252'>Payload Blocked! Connection Failed [$time]</font><br/>")
-                } else if (statusMsg == "DISCONNECTED") {
-                    triggerDisconnectLogs()
+                if (btnConnect.text.toString() == "DISCONNECT" || btnConnect.text.toString() == "VERIFYING...") {
+                     triggerDisconnectLogs()
                 }
             }
             updateUi(isRunning)
@@ -82,6 +76,7 @@ class MainActivity : Activity() {
 
         btnClearLogs.setOnClickListener { tvLogs.text = "" }
 
+        // الدالة الجديدة: فحص حقيقي بدون أي أرقام وهمية
         pingRunnable = object : Runnable {
             override fun run() {
                 if (TunnelVpnService.isRunning) {
@@ -89,8 +84,14 @@ class MainActivity : Activity() {
                         val pingMs = executePing()
                         runOnUiThread {
                             val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                            val color = if (pingMs <= 100) "#00E676" else "#FF5252"
-                            appendHtmlLog("HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>")
+                            if (pingMs != -1) {
+                                // البايلود صحيح واكو إنترنت
+                                val color = if (pingMs <= 100) "#00E676" else "#FF5252"
+                                appendHtmlLog("HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>")
+                            } else {
+                                // البايلود غلط والسيرفر قطع النت
+                                appendHtmlLog("Unable to detect internet connection [$time]<br/>")
+                            }
                         }
                     }.start()
                     mainHandler.postDelayed(this, 2500)
@@ -106,7 +107,6 @@ class MainActivity : Activity() {
                 startService(stopIntent)
                 updateUi(false)
             } else {
-                // تم مسح شرط إلزامية البايلود مالت الواجهة؛ التطبيق الآن يمرر أي شيء يكتبه حيدر بكل حرية
                 val editor = prefs.edit()
                 editor.putString("SERVER", etServer.text.toString())
                 editor.putString("UUID", etUuid.text.toString())
@@ -130,10 +130,13 @@ class MainActivity : Activity() {
     private fun executePing(): Int {
         try {
             val start = System.currentTimeMillis()
-            val process = Runtime.getRuntime().exec("ping -c 1 -W 1 8.8.8.8")
-            if (process.waitFor() == 0) return (System.currentTimeMillis() - start).toInt().coerceAtMost(1200)
+            // فحص اتصال حقيقي بسيرفرات جوجل
+            val process = Runtime.getRuntime().exec("ping -c 1 -W 2 8.8.8.8")
+            if (process.waitFor() == 0) {
+                return (System.currentTimeMillis() - start).toInt()
+            }
         } catch (e: Exception) {}
-        return (60..140).random()
+        return -1 // إذا فشل الاتصال يرجع -1 (لا يوجد نت)
     }
 
     private fun appendHtmlLog(htmlText: String) {
@@ -148,16 +151,19 @@ class MainActivity : Activity() {
     private fun triggerConnectingLogs() {
         tvLogs.text = ""
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Verifying Connection to ${etServer.text} [$time]<br/>")
+        appendHtmlLog("Connecting to ${etServer.text} [$time]<br/>")
     }
 
     private fun triggerConnectedLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("<font color='#00E676'>True Connection Established [$time]</font><br/>")
+        appendHtmlLog("Connection established [$time]<br/>")
+        appendHtmlLog("<font color='#FFF'>Connected [$time]</font><br/>")
     }
 
     private fun triggerDisconnectLogs() {
         val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        appendHtmlLog("Closing client connection [$time]<br/>")
+        appendHtmlLog("Client connection closed [$time]<br/>")
         appendHtmlLog("<font color='#FF5252'>Disconnected [$time]</font><br/>")
     }
 
@@ -199,7 +205,7 @@ class MainActivity : Activity() {
             btnConnect.setTextColor(Color.parseColor("#FF5252"))
             mainHandler.post(pingRunnable)
         } else if (isVerifying) {
-            btnConnect.text = "VERIFYING..."
+            btnConnect.text = "CONNECTING..."
             btnConnect.setBackgroundColor(Color.parseColor("#555555"))
             btnConnect.setTextColor(Color.WHITE)
             mainHandler.removeCallbacks(pingRunnable)
