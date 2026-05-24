@@ -36,7 +36,6 @@ class TunnelVpnService : VpnService() {
             isRunning = true
             sendStateBroadcast(true)
             
-            // تحديث الإشعار ليظهر فيه الـ IP بشكل صريح وثابت
             showNotification("Connected to: $server 🔑")
 
             Thread {
@@ -49,7 +48,7 @@ class TunnelVpnService : VpnService() {
             }.start()
         }
 
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun setupVpnInterface() {
@@ -59,8 +58,8 @@ class TunnelVpnService : VpnService() {
             builder.setMtu(1500)
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
+            builder.addDnsServer("1.1.1.1")
             
-            // هذه الأسطر هي السحر الذي يمرر الإنترنت (التصفح والتطبيقات) إلى النفق بسلاسة
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
             }
@@ -83,9 +82,10 @@ class TunnelVpnService : VpnService() {
             }
             Runtime.getRuntime().exec("chmod 755 ${xrayBinary.absolutePath}").waitFor()
 
-            val cleanHost = payload.replace("\"", "").replace("\n", "").trim()
+            // تنظيف نص الـ Payload من أي علامات زائدة لجعله Host صالح للنواة
+            val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
 
-            // إنشاء ملف config.json حقيقي ليعمل الإنترنت ببروتوكول VLESS
+            // هيكلة ملف الـ config لدعم VLESS TCP Direct مع حقن الـ Payload كـ HTTP Camouflage
             val config = """
             {
               "log": { "loglevel": "warning" },
@@ -110,11 +110,23 @@ class TunnelVpnService : VpnService() {
                     ]
                   },
                   "streamSettings": {
-                    "network": "ws",
+                    "network": "tcp",
                     "security": "none",
-                    "wsSettings": {
-                      "path": "/",
-                      "headers": { "Host": "$cleanHost" }
+                    "tcpSettings": {
+                      "header": {
+                        "type": "http",
+                        "request": {
+                          "version": "1.1",
+                          "method": "GET",
+                          "path": ["/"],
+                          "headers": {
+                            "Host": ["$cleanHost"],
+                            "User-Agent": ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"],
+                            "Connection": ["keep-alive"],
+                            "Pragma": ["no-cache"]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -125,7 +137,6 @@ class TunnelVpnService : VpnService() {
             val configFile = File(filesDir, "config.json")
             configFile.writeText(config)
 
-            // تشغيل النواة رسمياً وتغذيتها ببياناتك
             val command = arrayOf(xrayBinary.absolutePath, "-c", configFile.absolutePath)
             xrayProcess = ProcessBuilder(*command).start()
             
