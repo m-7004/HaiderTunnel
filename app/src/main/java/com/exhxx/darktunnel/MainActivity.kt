@@ -11,9 +11,14 @@ import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class MainActivity : Activity() {
     private lateinit var etServer: EditText
@@ -21,6 +26,10 @@ class MainActivity : Activity() {
     private lateinit var etUuid: EditText
     private lateinit var etPayload: EditText
     private lateinit var btnConnect: Button
+    private lateinit var tvPing: TextView
+
+    private val pingHandler = Handler(Looper.getMainLooper())
+    private lateinit var pingRunnable: Runnable
 
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -38,8 +47,8 @@ class MainActivity : Activity() {
         etUuid = findViewById(R.id.etUuid)
         etPayload = findViewById(R.id.etPayload)
         btnConnect = findViewById(R.id.btnConnect)
+        tvPing = findViewById(R.id.tvPing)
 
-        // طلب إذن الإشعارات تلقائياً لأندرويد 13 فما فوق لمنع اختفاء الإشعار
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
@@ -51,6 +60,26 @@ class MainActivity : Activity() {
         etPort.setText(prefs.getString("PORT", ""))
         etUuid.setText(prefs.getString("UUID", ""))
         etPayload.setText(prefs.getString("PAYLOAD", ""))
+
+        // برمجة البنج ليعمل في الخلفية ويحدث الشاشة كل ثانيتين
+        pingRunnable = object : Runnable {
+            override fun run() {
+                if (TunnelVpnService.isRunning) {
+                    Thread {
+                        val pingResult = executePing()
+                        runOnUiThread {
+                            tvPing.text = "Ping: $pingResult"
+                            if (pingResult.contains("Timeout") || pingResult.contains("Error")) {
+                                tvPing.setTextColor(Color.parseColor("#FF5252")) // أحمر إذا فشل
+                            } else {
+                                tvPing.setTextColor(Color.parseColor("#00E676")) // أخضر إذا نجح
+                            }
+                        }
+                    }.start()
+                    pingHandler.postDelayed(this, 2000)
+                }
+            }
+        }
 
         updateUi(TunnelVpnService.isRunning)
 
@@ -76,6 +105,23 @@ class MainActivity : Activity() {
                     startVpn()
                 }
             }
+        }
+    }
+
+    private fun executePing(): String {
+        try {
+            val process = Runtime.getRuntime().exec("ping -c 1 -W 1 8.8.8.8")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                if (line!!.contains("time=")) {
+                    val time = line!!.substringAfter("time=").substringBefore(" ms")
+                    return "$time ms"
+                }
+            }
+            return "Timeout"
+        } catch (e: Exception) {
+            return "Error"
         }
     }
 
@@ -116,12 +162,29 @@ class MainActivity : Activity() {
     }
 
     private fun updateUi(isRunning: Boolean) {
+        // قفل أو فتح الحقول بناءً على حالة الاتصال
+        etServer.isEnabled = !isRunning
+        etPort.isEnabled = !isRunning
+        etUuid.isEnabled = !isRunning
+        etPayload.isEnabled = !isRunning
+
+        // تعتيم الحقول قليلاً عند القفل لتبدو احترافية
+        val alpha = if (isRunning) 0.5f else 1.0f
+        etServer.alpha = alpha
+        etPort.alpha = alpha
+        etUuid.alpha = alpha
+        etPayload.alpha = alpha
+
         if (isRunning) {
             btnConnect.text = "DISCONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F"))
+            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F")) // زر أحمر
+            pingHandler.post(pingRunnable) // تشغيل البنج
         } else {
             btnConnect.text = "CONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2"))
+            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2")) // زر بنفسجي
+            pingHandler.removeCallbacks(pingRunnable) // إيقاف البنج
+            tvPing.text = "Ping: -- ms"
+            tvPing.setTextColor(Color.parseColor("#00FF00"))
         }
     }
 }

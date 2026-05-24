@@ -8,6 +8,8 @@
 
     <application 
         android:label="DarkTunnel Pro" 
+        android:icon="@drawable/ic_logo"
+        android:roundIcon="@drawable/ic_logo"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar"
         android:extractNativeLibs="true">
         <activity android:name=".MainActivity" android:exported="true">

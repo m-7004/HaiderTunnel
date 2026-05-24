@@ -1,25 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
-    android:orientation="vertical" android:padding="16dp" android:background="#121212">
-    
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="DarkTunnel Pro" android:textSize="24sp" android:textColor="#FFFFFF"
-        android:textStyle="bold" android:gravity="center" android:layout_marginBottom="24dp"/>
+    android:orientation="vertical" android:padding="24dp"
+    android:background="#121212" android:gravity="center">
 
-    <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:hint="Target Server (IP)" android:textColorHint="#888888" android:textColor="#FFFFFF" />
-        
-    <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:hint="Port (e.g. 80)" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+    <ImageView android:layout_width="80dp" android:layout_height="80dp" android:src="@drawable/ic_logo" android:layout_marginBottom="16dp"/>
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DarkTunnel Pro" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" android:layout_marginBottom="32dp"/>
 
-    <EditText android:id="@+id/etUuid" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:hint="UUID" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+    <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="50dp" android:hint="Target Server (IP)" android:textColorHint="#888" android:textColor="#FFF" android:background="#1E1E1E" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true"/>
+    <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="50dp" android:hint="Port" android:textColorHint="#888" android:textColor="#FFF" android:background="#1E1E1E" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true" android:inputType="number"/>
+    <EditText android:id="@+id/etUuid" android:layout_width="match_parent" android:layout_height="50dp" android:hint="UUID" android:textColorHint="#888" android:textColor="#FFF" android:background="#1E1E1E" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true"/>
+    <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="50dp" android:hint="Payload (Host)" android:textColorHint="#888" android:textColor="#FFF" android:background="#1E1E1E" android:padding="12dp" android:layout_marginBottom="24dp" android:singleLine="true"/>
 
-    <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:hint="Payload" android:textColorHint="#888888" android:textColor="#FFFFFF" />
+    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="55dp" android:text="CONNECT" android:textColor="#FFF" android:backgroundTint="#8A2BE2" android:textStyle="bold" android:layout_marginBottom="24dp"/>
 
-    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="60dp"
-        android:text="CONNECT" android:backgroundTint="#8A2BE2" android:textColor="#FFFFFF"
-        android:layout_marginTop="24dp" android:textStyle="bold"/>
+    <TextView android:id="@+id/tvPing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ping: -- ms" android:textColor="#00FF00" android:textSize="18sp" android:textStyle="bold"/>
 </LinearLayout>
