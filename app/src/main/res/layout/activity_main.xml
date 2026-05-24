@@ -4,23 +4,33 @@
     android:orientation="vertical" android:padding="20dp"
     android:background="#1A1A1A" android:gravity="center_horizontal">
 
-    <ImageView android:layout_width="65dp" android:layout_height="65dp" android:src="@drawable/ic_logo" android:layout_marginBottom="8dp" android:layout_marginTop="15dp"/>
-    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@exhxx78" android:textColor="#FFC107" android:textSize="24sp" android:textStyle="bold" android:layout_marginBottom="25dp"/>
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:scrollbars="none">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="center_horizontal">
+            
+            <ImageView android:layout_width="65dp" android:layout_height="65dp" android:src="@drawable/ic_logo" android:layout_marginBottom="8dp" android:layout_marginTop="10dp"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@exhxx78" android:textColor="#FFC107" android:textSize="24sp" android:textStyle="bold" android:layout_marginBottom="20dp"/>
 
-    <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Target Server (IP)" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true"/>
-    <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Port" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true" android:inputType="number"/>
-    <EditText android:id="@+id/etUuid" android:layout_width="match_parent" android:layout_height="48dp" android:hint="UUID" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="12dp" android:singleLine="true"/>
-    <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Payload (e.g. HTTP/78 2026)" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="15dp" android:singleLine="true"/>
+            <Spinner android:id="@+id/spProtocol" android:layout_width="match_parent" android:layout_height="50dp" android:backgroundTint="#FFC107" android:layout_marginBottom="15dp" android:popupBackground="#262626"/>
 
-    <CheckBox android:id="@+id/cbAutoConnect" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Connect on App Start" android:textColor="#999" android:layout_marginBottom="15dp" android:buttonTint="#FFC107"/>
+            <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Target Server (IP/Host)" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true"/>
+            <EditText android:id="@+id/etPort" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Port" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true" android:inputType="number"/>
+            <EditText android:id="@+id/etUuid" android:layout_width="match_parent" android:layout_height="48dp" android:hint="UUID / Password" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true"/>
+            
+            <EditText android:id="@+id/etPath" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Path (e.g. /)" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true" android:visibility="gone"/>
+            <EditText android:id="@+id/etSni" android:layout_width="match_parent" android:layout_height="48dp" android:hint="SNI / Header Host" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true" android:visibility="gone"/>
+            <EditText android:id="@+id/etProxy" android:layout_width="match_parent" android:layout_height="48dp" android:hint="Proxy (IP:Port)" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="10dp" android:singleLine="true" android:visibility="gone"/>
+            
+            <EditText android:id="@+id/etPayload" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:hint="Payload" android:textColorHint="#666" android:textColor="#FFF" android:background="#262626" android:padding="12dp" android:layout_marginBottom="15dp"/>
 
-    <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="52dp" android:text="CONNECT" android:textColor="#1A1A1A" android:backgroundTint="#FFC107" android:textStyle="bold" android:layout_marginBottom="15dp"/>
-    
-    <TextView android:id="@+id/tvPing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ping: -- ms" android:textColor="#00FF00" android:textSize="16sp" android:textStyle="bold" android:layout_marginBottom="15dp"/>
+            <CheckBox android:id="@+id/cbAutoConnect" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Auto Connect" android:textColor="#999" android:layout_marginBottom="15dp" android:buttonTint="#FFC107"/>
+            <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="52dp" android:text="CONNECT" android:textColor="#1A1A1A" android:backgroundTint="#FFC107" android:textStyle="bold" android:layout_marginBottom="10dp"/>
+            <TextView android:id="@+id/tvPing" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Ping: -- ms" android:textColor="#00FF00" android:textSize="14sp" android:textStyle="bold" android:layout_marginBottom="10dp"/>
+        </LinearLayout>
+    </ScrollView>
 
     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SYSTEM LOGS" android:textColor="#666" android:textSize="12sp" android:textStyle="bold" android:layout_gravity="start" android:layout_marginBottom="4dp"/>
-    <ScrollView android:id="@+id/logScroll" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="#0A0A0A" android:padding="10dp">
-        <TextView android:id="@+id/tvLogs" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#00FF00" android:textSize="11sp" android:fontFamily="monospace" android:text="Waiting for connection..."/>
+    <ScrollView android:id="@+id/logScroll" android:layout_width="match_parent" android:layout_height="120dp" android:background="#0A0A0A" android:padding="10dp">
+        <TextView android:id="@+id/tvLogs" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#00FF00" android:textSize="10sp" android:fontFamily="monospace" android:text="Waiting for connection..."/>
     </ScrollView>
 
 </LinearLayout>

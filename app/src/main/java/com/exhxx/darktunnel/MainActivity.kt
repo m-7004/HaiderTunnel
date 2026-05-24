@@ -14,20 +14,19 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 
 class MainActivity : Activity() {
+    private lateinit var spProtocol: Spinner
     private lateinit var etServer: EditText
     private lateinit var etPort: EditText
     private lateinit var etUuid: EditText
+    private lateinit var etPath: EditText
+    private lateinit var etSni: EditText
+    private lateinit var etProxy: EditText
     private lateinit var etPayload: EditText
     private lateinit var cbAutoConnect: CheckBox
     private lateinit var btnConnect: Button
@@ -50,9 +49,13 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        spProtocol = findViewById(R.id.spProtocol)
         etServer = findViewById(R.id.etServer)
         etPort = findViewById(R.id.etPort)
         etUuid = findViewById(R.id.etUuid)
+        etPath = findViewById(R.id.etPath)
+        etSni = findViewById(R.id.etSni)
+        etProxy = findViewById(R.id.etProxy)
         etPayload = findViewById(R.id.etPayload)
         cbAutoConnect = findViewById(R.id.cbAutoConnect)
         btnConnect = findViewById(R.id.btnConnect)
@@ -66,12 +69,52 @@ class MainActivity : Activity() {
             }
         }
 
+        // برمجة القائمة المنسدلة
+        val protocols = arrayOf("VLESS - TCP Direct (Payload)", "VLESS - WebSocket (SNI)", "Trojan + WS + Proxy (Payload)")
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, protocols)
+        spProtocol.adapter = adapter
+
         val prefs = getSharedPreferences("DarkTunnelPrefs", Context.MODE_PRIVATE)
+        spProtocol.setSelection(prefs.getInt("PROTOCOL_INDEX", 0))
         etServer.setText(prefs.getString("SERVER", ""))
         etPort.setText(prefs.getString("PORT", ""))
         etUuid.setText(prefs.getString("UUID", ""))
+        etPath.setText(prefs.getString("PATH", "/"))
+        etSni.setText(prefs.getString("SNI", ""))
+        etProxy.setText(prefs.getString("PROXY", ""))
         etPayload.setText(prefs.getString("PAYLOAD", ""))
         cbAutoConnect.isChecked = prefs.getBoolean("AUTO_CONNECT", false)
+
+        // إخفاء وإظهار الحقول بذكاء عند تغيير القائمة
+        spProtocol.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                (view as? TextView)?.setTextColor(Color.WHITE)
+                when (position) {
+                    0 -> { // TCP
+                        etUuid.hint = "UUID"
+                        etPath.visibility = View.GONE
+                        etSni.visibility = View.GONE
+                        etProxy.visibility = View.GONE
+                        etPayload.visibility = View.VISIBLE
+                    }
+                    1 -> { // WS SNI
+                        etUuid.hint = "UUID"
+                        etPath.visibility = View.VISIBLE
+                        etSni.visibility = View.VISIBLE
+                        etProxy.visibility = View.GONE
+                        etPayload.visibility = View.GONE
+                    }
+                    2 -> { // Trojan
+                        etUuid.hint = "Password"
+                        etPath.visibility = View.VISIBLE
+                        etSni.visibility = View.VISIBLE
+                        etProxy.visibility = View.VISIBLE
+                        etPayload.visibility = View.VISIBLE
+                    }
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
 
         pingRunnable = object : Runnable {
             override fun run() {
@@ -88,7 +131,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // تحديث وتمرير السجلات تلقائياً بدون تدخل المستخدم
         logRunnable = object : Runnable {
             override fun run() {
                 val logFile = File(filesDir, "xray_error.log")
@@ -115,9 +157,13 @@ class MainActivity : Activity() {
                 updateUi(false)
             } else {
                 val editor = prefs.edit()
+                editor.putInt("PROTOCOL_INDEX", spProtocol.selectedItemPosition)
                 editor.putString("SERVER", etServer.text.toString())
                 editor.putString("PORT", etPort.text.toString())
                 editor.putString("UUID", etUuid.text.toString())
+                editor.putString("PATH", etPath.text.toString())
+                editor.putString("SNI", etSni.text.toString())
+                editor.putString("PROXY", etProxy.text.toString())
                 editor.putString("PAYLOAD", etPayload.text.toString())
                 editor.putBoolean("AUTO_CONNECT", cbAutoConnect.isChecked)
                 editor.apply()
@@ -163,9 +209,13 @@ class MainActivity : Activity() {
         updateUi(true)
         val intent = Intent(this, TunnelVpnService::class.java).apply {
             action = "ACTION_START"
+            putExtra("PROTOCOL", spProtocol.selectedItemPosition)
             putExtra("SERVER", etServer.text.toString())
             putExtra("PORT", etPort.text.toString())
             putExtra("UUID", etUuid.text.toString())
+            putExtra("PATH", etPath.text.toString())
+            putExtra("SNI", etSni.text.toString())
+            putExtra("PROXY", etProxy.text.toString())
             putExtra("PAYLOAD", etPayload.text.toString())
         }
         startService(intent)
@@ -173,7 +223,7 @@ class MainActivity : Activity() {
 
     private fun updateUi(isRunning: Boolean) {
         val alpha = if (isRunning) 0.5f else 1.0f
-        arrayOf(etServer, etPort, etUuid, etPayload, cbAutoConnect).forEach { 
+        arrayOf(spProtocol, etServer, etPort, etUuid, etPath, etSni, etProxy, etPayload, cbAutoConnect).forEach { 
             it.isEnabled = !isRunning 
             it.alpha = alpha
         }
