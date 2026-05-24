@@ -9,7 +9,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
-import java.io.FileOutputStream
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -35,7 +34,6 @@ class TunnelVpnService : VpnService() {
             
             isRunning = true
             sendStateBroadcast(true)
-            
             showNotification(server)
 
             Thread {
@@ -59,12 +57,10 @@ class TunnelVpnService : VpnService() {
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
             
-            // استثناء تطبيقنا لمنع حلقة الاتصال اللانهائية (Infinite Loop) وتمرير الإنترنت الفعلي السريع
             try {
+                // منع انهيار إنترنت الباقة باستثناء التطبيق من النفق
                 builder.addDisallowedApplication(packageName)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) {}
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
@@ -78,26 +74,17 @@ class TunnelVpnService : VpnService() {
 
     private fun startXrayEngine(server: String, port: String, uuid: String, payload: String) {
         try {
-            val xrayBinary = File(filesDir, "xray")
-            if (!xrayBinary.exists()) {
-                assets.open("xray").use { input ->
-                    FileOutputStream(xrayBinary).use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            }
-            Runtime.getRuntime().exec("chmod 755 ${xrayBinary.absolutePath}").waitFor()
-
+            // استدعاء النواة من مجلدات النظام كمكتبة تنفيذية (وهو السر الحقيقي)
+            val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
 
-            // صياغة ملف البناء ليتوافق 100% مع شروط سكربت البايثون في سيرفرك OVH وحقن الشفرة المطلوبة
             val config = """
             {
               "log": { "loglevel": "warning" },
               "inbounds": [
                 {
                   "port": 10809,
-                  "listen": "127.0.0.1",
+                  "listen": "0.0.0.0",
                   "protocol": "http",
                   "settings": { "allowTransparent": false }
                 }
@@ -141,8 +128,10 @@ class TunnelVpnService : VpnService() {
             val configFile = File(filesDir, "config.json")
             configFile.writeText(config)
 
-            val command = arrayOf(xrayBinary.absolutePath, "-c", configFile.absolutePath)
-            xrayProcess = ProcessBuilder(*command).start()
+            val command = arrayOf(xrayPath, "-c", configFile.absolutePath)
+            val processBuilder = ProcessBuilder(*command)
+            processBuilder.redirectErrorStream(true)
+            xrayProcess = processBuilder.start()
             
         } catch (e: Exception) {
             e.printStackTrace()
