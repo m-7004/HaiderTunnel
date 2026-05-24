@@ -34,14 +34,16 @@ class TunnelVpnService : VpnService() {
             
             isRunning = true
             sendStateBroadcast(true)
-            showNotification(server)
+            showNotification(server, "Connecting...")
 
             Thread {
                 try {
                     startXrayEngine(server, port, uuid, payload)
                     setupVpnInterface()
+                    showNotification(server, "Connected 🟢")
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    showNotification(server, "Error 🔴")
                 }
             }.start()
         }
@@ -57,30 +59,29 @@ class TunnelVpnService : VpnService() {
             builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
             
-            try {
-                // منع انهيار إنترنت الباقة باستثناء التطبيق من النفق
-                builder.addDisallowedApplication(packageName)
-            } catch (e: Exception) {}
+            try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
             }
             
             vpnInterface = builder.establish()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun startXrayEngine(server: String, port: String, uuid: String, payload: String) {
         try {
-            // استدعاء النواة من مجلدات النظام كمكتبة تنفيذية (وهو السر الحقيقي)
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val cleanHost = payload.replace("\"", "").replace("\n", "").replace("\r", "").trim()
+            val logFile = File(filesDir, "xray_error.log").absolutePath
 
+            // تم إضافة مسار الـ Logs برمجياً ليقرأه التطبيق
             val config = """
             {
-              "log": { "loglevel": "warning" },
+              "log": { 
+                "loglevel": "warning",
+                "error": "$logFile"
+              },
               "inbounds": [
                 {
                   "port": 10809,
@@ -129,43 +130,36 @@ class TunnelVpnService : VpnService() {
             configFile.writeText(config)
 
             val command = arrayOf(xrayPath, "-c", configFile.absolutePath)
-            val processBuilder = ProcessBuilder(*command)
-            processBuilder.redirectErrorStream(true)
-            xrayProcess = processBuilder.start()
+            xrayProcess = ProcessBuilder(*command).start()
             
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun stopVpnService() {
         isRunning = false
         sendStateBroadcast(false)
-
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
-
         stopForeground(true)
         stopSelf()
     }
 
-    private fun showNotification(serverIp: String) {
+    // الإشعار الذكي المتغير
+    private fun showNotification(serverIp: String, status: String) {
         createNotificationChannel()
-        val text = "Server IP: $serverIp 🟢"
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("DarkTunnel Pro")
-                .setContentText(text)
+                .setContentText("$serverIp - $status")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("DarkTunnel Pro")
-                .setContentText(text)
+                .setContentText("$serverIp - $status")
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .build()
         }
-        
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(1, notification)
         startForeground(1, notification)
@@ -180,9 +174,7 @@ class TunnelVpnService : VpnService() {
     }
 
     private fun sendStateBroadcast(running: Boolean) {
-        val intent = Intent("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS").apply {
-            putExtra("RUNNING", running)
-        }
+        val intent = Intent("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS").apply { putExtra("RUNNING", running) }
         sendBroadcast(intent)
     }
 
