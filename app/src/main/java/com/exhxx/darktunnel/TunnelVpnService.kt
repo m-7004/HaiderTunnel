@@ -4,26 +4,31 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 
 class TunnelVpnService : VpnService() {
-    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val server = intent?.getStringExtra("SERVER") ?: "Unknown"
+        
         createNotificationChannel()
         val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, "DARK_TUNNEL_CH")
                 .setContentTitle("DarkTunnel Pro")
-                .setContentText("Connected and running stably")
+                .setContentText("Connected to Server: $server")
+                .setSmallIcon(android.R.drawable.ic_secure) // <-- هذا السطر الذي كان ينقصنا!
                 .build()
         } else {
             Notification.Builder(this)
                 .setContentTitle("DarkTunnel Pro")
-                .setContentText("Connected and running stably")
+                .setContentText("Connected to Server: $server")
+                .setSmallIcon(android.R.drawable.ic_secure)
                 .build()
         }
         startForeground(1, notification)
         
-        // هنا سيتم تفعيل الاتصال بالنواة (tun2socks)
+        // هنا سيتم تشغيل ملف الـ Xray لاحقاً
         
         return START_STICKY
     }
