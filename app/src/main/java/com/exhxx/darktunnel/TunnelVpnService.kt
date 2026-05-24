@@ -59,8 +59,6 @@ class TunnelVpnService : VpnService() {
             builder.setSession("@exhxx78")
             builder.setMtu(1400)
             builder.addAddress("10.0.0.2", 24)
-            
-            // دي ان اس خارجي عالمي مرتب ونظيف (Cloudflare و Google)
             builder.addDnsServer("1.1.1.1")
             builder.addDnsServer("8.8.8.8")
             
@@ -94,16 +92,16 @@ class TunnelVpnService : VpnService() {
                 val lines = raw.split("[crlf]", "\n")
                 val firstLine = lines[0].trim()
                 
-                val firstSpace = firstLine.indexOf(" ")
+                // التنظيف الذكي: إزالة HTTP/1.1 و 300 ok لأن Xray سيضيفها بشكل صحيح لمنع الـ Throttling
+                val cleanFirstLine = firstLine.replace(Regex("HTTP/1\\.[0-9].*"), "").trim()
+                
+                val firstSpace = cleanFirstLine.indexOf(" ")
                 if (firstSpace != -1) {
-                    method = firstLine.substring(0, firstSpace).trim()
-                    var remaining = firstLine.substring(firstSpace + 1)
-                    remaining = remaining.replace(Regex("HTTP/1\\.[0-9]", RegexOption.IGNORE_CASE), "").trim()
-                    if (remaining.isNotBlank()) {
-                        path = remaining
-                    }
+                    method = cleanFirstLine.substring(0, firstSpace).trim()
+                    path = cleanFirstLine.substring(firstSpace + 1).trim()
+                    if (path.isEmpty()) path = "/"
                 } else {
-                    method = firstLine
+                    method = cleanFirstLine
                 }
 
                 val customHeaders = mutableListOf<String>()
@@ -120,7 +118,6 @@ class TunnelVpnService : VpnService() {
                 }
             }
 
-            // توجيه ذكي: إجبار Xray على تشفير الـ DNS وتمريره عبر VLESS
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
@@ -176,16 +173,8 @@ class TunnelVpnService : VpnService() {
               "routing": {
                 "domainStrategy": "IPIfNonMatch",
                 "rules": [
-                  {
-                    "type": "field",
-                    "port": 53,
-                    "outboundTag": "proxy"
-                  },
-                  {
-                    "type": "field",
-                    "network": "tcp,udp",
-                    "outboundTag": "proxy"
-                  }
+                  { "type": "field", "port": 53, "outboundTag": "proxy" },
+                  { "type": "field", "network": "tcp,udp", "outboundTag": "proxy" }
                 ]
               },
               "policy": {
