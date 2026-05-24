@@ -71,7 +71,8 @@ class MainActivity : Activity() {
             }
         }
 
-        val protocols = arrayOf("VLESS - TCP Direct (Payload)", "VLESS - WebSocket (SNI)", "Trojan + WS + Proxy (Payload)")
+        // إضافة VMess للقائمة لتصبح 4 قوالب متكاملة
+        val protocols = arrayOf("VLESS - TCP Direct (Payload)", "VLESS - WebSocket (SNI)", "VMess - WebSocket (SNI)", "Trojan - WS + Proxy (Payload)")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, protocols)
         spProtocol.adapter = adapter
 
@@ -91,7 +92,7 @@ class MainActivity : Activity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 (view as? TextView)?.setTextColor(Color.WHITE)
                 when (position) {
-                    0 -> { // TCP
+                    0 -> { // VLESS TCP
                         etUuid.hint = "UUID"
                         etPath.visibility = View.GONE
                         etSni.visibility = View.GONE
@@ -99,7 +100,7 @@ class MainActivity : Activity() {
                         etProxy.visibility = View.GONE
                         etPayload.visibility = View.VISIBLE
                     }
-                    1 -> { // WS SNI
+                    1, 2 -> { // VLESS WS & VMess WS (نفس الحقول المطلوبة)
                         etUuid.hint = "UUID"
                         etPath.visibility = View.VISIBLE
                         etSni.visibility = View.VISIBLE
@@ -107,7 +108,7 @@ class MainActivity : Activity() {
                         etProxy.visibility = View.GONE
                         etPayload.visibility = View.GONE
                     }
-                    2 -> { // Trojan
+                    3 -> { // Trojan WS + Proxy
                         etUuid.hint = "Password"
                         etPath.visibility = View.VISIBLE
                         etSni.visibility = View.VISIBLE

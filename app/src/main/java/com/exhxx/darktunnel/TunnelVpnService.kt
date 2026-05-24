@@ -81,7 +81,7 @@ class TunnelVpnService : VpnService() {
             var outboundConfig = ""
 
             when (protocolIndex) {
-                0 -> { // VLESS - TCP Direct (Payload)
+                0 -> { // VLESS - TCP Direct
                     outboundConfig = """
                     {
                       "protocol": "vless",
@@ -92,24 +92,13 @@ class TunnelVpnService : VpnService() {
                         "network": "tcp",
                         "security": "none",
                         "tcpSettings": {
-                          "header": {
-                            "type": "http",
-                            "request": {
-                              "version": "1.1",
-                              "method": "GET",
-                              "path": ["/"],
-                              "headers": {
-                                "User-Agent": ["$parsedPayload"],
-                                "Connection": ["keep-alive"]
-                              }
-                            }
-                          }
+                          "header": { "type": "http", "request": { "version": "1.1", "method": "GET", "path": ["/"], "headers": { "User-Agent": ["$parsedPayload"], "Connection": ["keep-alive"] } } }
                         }
                       }
                     }
                     """
                 }
-                1 -> { // VLESS - WebSocket (SNI)
+                1 -> { // VLESS - WebSocket
                     outboundConfig = """
                     {
                       "protocol": "vless",
@@ -120,15 +109,28 @@ class TunnelVpnService : VpnService() {
                         "network": "ws",
                         "security": "tls",
                         "tlsSettings": { "serverName": "$sni" },
-                        "wsSettings": {
-                          "path": "$path",
-                          "headers": { "Host": "$host" }
-                        }
+                        "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
                       }
                     }
                     """
                 }
-                2 -> { // Trojan + WS + Proxy (Payload)
+                2 -> { // VMess - WebSocket (مع إضافة alterId)
+                    outboundConfig = """
+                    {
+                      "protocol": "vmess",
+                      "settings": {
+                        "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 443}, "users": [ { "id": "$uuid", "alterId": 0, "security": "auto" } ] } ]
+                      },
+                      "streamSettings": {
+                        "network": "ws",
+                        "security": "tls",
+                        "tlsSettings": { "serverName": "$sni" },
+                        "wsSettings": { "path": "$path", "headers": { "Host": "$host" } }
+                      }
+                    }
+                    """
+                }
+                3 -> { // Trojan + WS + Proxy
                     outboundConfig = """
                     {
                       "protocol": "trojan",
@@ -139,13 +141,7 @@ class TunnelVpnService : VpnService() {
                         "network": "ws",
                         "security": "tls",
                         "tlsSettings": { "serverName": "$sni" },
-                        "wsSettings": {
-                          "path": "$path",
-                          "headers": {
-                            "Host": "$host",
-                            "Custom-Payload": "$parsedPayload"
-                          }
-                        }
+                        "wsSettings": { "path": "$path", "headers": { "Host": "$host", "Custom-Payload": "$parsedPayload" } }
                       }
                     }
                     """
