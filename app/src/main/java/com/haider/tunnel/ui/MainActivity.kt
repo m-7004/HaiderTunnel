@@ -1,5 +1,6 @@
 package com.haider.tunnel.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
 import android.os.Bundle
@@ -20,6 +21,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnConnect: Button
     private var isConnected = false
 
+    companion object {
+        private const val VPN_REQUEST_CODE = 100
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -32,39 +37,47 @@ class MainActivity : AppCompatActivity() {
         btnConnect = findViewById(R.id.btn_connect)
 
         btnConnect.setOnClickListener {
-            if (!isConnected) startVpn() else stopVpn()
+            if (!isConnected) requestVpnPermission() else stopVpn()
         }
     }
 
-    private fun startVpn() {
+    private fun requestVpnPermission() {
         val intent = VpnService.prepare(this)
         if (intent != null) {
-            startActivityForResult(intent, 100)
+            startActivityForResult(intent, VPN_REQUEST_CODE)
         } else {
-            onActivityResult(100, RESULT_OK, null)
+            startVpn()
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 100 && resultCode == RESULT_OK) {
-            val intent = Intent(this, TunnelVpnService::class.java).apply {
-                putExtra("server", etServer.text.toString())
-                putExtra("port", etPort.text.toString().toIntOrNull() ?: 80)
-                putExtra("uuid", etUuid.text.toString())
-                putExtra("payload", etPayload.text.toString())
+        if (requestCode == VPN_REQUEST_CODE) {
+            if (resultCode == Activity.RESULT_OK) {
+                startVpn()
+            } else {
+                tvStatus.text = "تم رفض إذن VPN"
+                tvStatus.setTextColor(0xFFFF4444.toInt())
             }
-            startService(intent)
-            isConnected = true
-            tvStatus.text = "متصل ✓"
-            tvStatus.setTextColor(0xFF44FF44.toInt())
-            btnConnect.text = "DISCONNECT"
         }
     }
 
+    private fun startVpn() {
+        val intent = Intent(this, TunnelVpnService::class.java).apply {
+            putExtra("server", etServer.text.toString().trim())
+            putExtra("port", etPort.text.toString().toIntOrNull() ?: 80)
+            putExtra("uuid", etUuid.text.toString().trim())
+            putExtra("payload", etPayload.text.toString().trim())
+        }
+        startService(intent)
+        isConnected = true
+        tvStatus.text = "متصل ✓"
+        tvStatus.setTextColor(0xFF44FF44.toInt())
+        btnConnect.text = "DISCONNECT"
+    }
+
     private fun stopVpn() {
-        val intent = Intent(this, TunnelVpnService::class.java)
-        stopService(intent)
+        stopService(Intent(this, TunnelVpnService::class.java))
         isConnected = false
         tvStatus.text = "غير متصل"
         tvStatus.setTextColor(0xFFFF4444.toInt())
