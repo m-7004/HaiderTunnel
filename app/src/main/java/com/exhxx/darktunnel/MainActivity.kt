@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var etUuid: EditText
     private lateinit var etPath: EditText
     private lateinit var etSni: EditText
+    private lateinit var etHost: EditText
     private lateinit var etProxy: EditText
     private lateinit var etPayload: EditText
     private lateinit var cbAutoConnect: CheckBox
@@ -55,6 +56,7 @@ class MainActivity : Activity() {
         etUuid = findViewById(R.id.etUuid)
         etPath = findViewById(R.id.etPath)
         etSni = findViewById(R.id.etSni)
+        etHost = findViewById(R.id.etHost)
         etProxy = findViewById(R.id.etProxy)
         etPayload = findViewById(R.id.etPayload)
         cbAutoConnect = findViewById(R.id.cbAutoConnect)
@@ -69,7 +71,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // برمجة القائمة المنسدلة
         val protocols = arrayOf("VLESS - TCP Direct (Payload)", "VLESS - WebSocket (SNI)", "Trojan + WS + Proxy (Payload)")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, protocols)
         spProtocol.adapter = adapter
@@ -81,11 +82,11 @@ class MainActivity : Activity() {
         etUuid.setText(prefs.getString("UUID", ""))
         etPath.setText(prefs.getString("PATH", "/"))
         etSni.setText(prefs.getString("SNI", ""))
+        etHost.setText(prefs.getString("HOST", ""))
         etProxy.setText(prefs.getString("PROXY", ""))
         etPayload.setText(prefs.getString("PAYLOAD", ""))
         cbAutoConnect.isChecked = prefs.getBoolean("AUTO_CONNECT", false)
 
-        // إخفاء وإظهار الحقول بذكاء عند تغيير القائمة
         spProtocol.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 (view as? TextView)?.setTextColor(Color.WHITE)
@@ -94,6 +95,7 @@ class MainActivity : Activity() {
                         etUuid.hint = "UUID"
                         etPath.visibility = View.GONE
                         etSni.visibility = View.GONE
+                        etHost.visibility = View.GONE
                         etProxy.visibility = View.GONE
                         etPayload.visibility = View.VISIBLE
                     }
@@ -101,6 +103,7 @@ class MainActivity : Activity() {
                         etUuid.hint = "UUID"
                         etPath.visibility = View.VISIBLE
                         etSni.visibility = View.VISIBLE
+                        etHost.visibility = View.VISIBLE
                         etProxy.visibility = View.GONE
                         etPayload.visibility = View.GONE
                     }
@@ -108,6 +111,7 @@ class MainActivity : Activity() {
                         etUuid.hint = "Password"
                         etPath.visibility = View.VISIBLE
                         etSni.visibility = View.VISIBLE
+                        etHost.visibility = View.VISIBLE
                         etProxy.visibility = View.VISIBLE
                         etPayload.visibility = View.VISIBLE
                     }
@@ -163,6 +167,7 @@ class MainActivity : Activity() {
                 editor.putString("UUID", etUuid.text.toString())
                 editor.putString("PATH", etPath.text.toString())
                 editor.putString("SNI", etSni.text.toString())
+                editor.putString("HOST", etHost.text.toString())
                 editor.putString("PROXY", etProxy.text.toString())
                 editor.putString("PAYLOAD", etPayload.text.toString())
                 editor.putBoolean("AUTO_CONNECT", cbAutoConnect.isChecked)
@@ -215,6 +220,7 @@ class MainActivity : Activity() {
             putExtra("UUID", etUuid.text.toString())
             putExtra("PATH", etPath.text.toString())
             putExtra("SNI", etSni.text.toString())
+            putExtra("HOST", etHost.text.toString())
             putExtra("PROXY", etProxy.text.toString())
             putExtra("PAYLOAD", etPayload.text.toString())
         }
@@ -223,7 +229,7 @@ class MainActivity : Activity() {
 
     private fun updateUi(isRunning: Boolean) {
         val alpha = if (isRunning) 0.5f else 1.0f
-        arrayOf(spProtocol, etServer, etPort, etUuid, etPath, etSni, etProxy, etPayload, cbAutoConnect).forEach { 
+        arrayOf(spProtocol, etServer, etPort, etUuid, etPath, etSni, etHost, etProxy, etPayload, cbAutoConnect).forEach { 
             it.isEnabled = !isRunning 
             it.alpha = alpha
         }

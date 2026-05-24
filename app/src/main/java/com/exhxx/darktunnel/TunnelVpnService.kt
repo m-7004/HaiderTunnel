@@ -33,6 +33,7 @@ class TunnelVpnService : VpnService() {
             val uuid = intent.getStringExtra("UUID") ?: ""
             val path = intent.getStringExtra("PATH") ?: "/"
             val sni = intent.getStringExtra("SNI") ?: ""
+            val host = intent.getStringExtra("HOST") ?: ""
             val proxy = intent.getStringExtra("PROXY") ?: ""
             val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
             
@@ -42,7 +43,7 @@ class TunnelVpnService : VpnService() {
 
             Thread {
                 try {
-                    startXrayEngine(protocolIndex, server, port, uuid, path, sni, proxy, payloadRaw)
+                    startXrayEngine(protocolIndex, server, port, uuid, path, sni, host, proxy, payloadRaw)
                     setupVpnInterface()
                     showNotification(server, "Connected 🟢")
                 } catch (e: Exception) {
@@ -70,12 +71,11 @@ class TunnelVpnService : VpnService() {
         } catch (e: Exception) {}
     }
 
-    private fun startXrayEngine(protocolIndex: Int, server: String, port: String, uuid: String, path: String, sni: String, proxy: String, payloadRaw: String) {
+    private fun startXrayEngine(protocolIndex: Int, server: String, port: String, uuid: String, path: String, sni: String, host: String, proxy: String, payloadRaw: String) {
         try {
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             val logFile = File(filesDir, "xray_error.log").absolutePath
             
-            // مترجم البايلود الذكي
             val parsedPayload = payloadRaw.replace("[crlf]", "\\r\\n").replace("[host_port]", "$server:$port").replace("\"", "\\\"")
 
             var outboundConfig = ""
@@ -122,7 +122,7 @@ class TunnelVpnService : VpnService() {
                         "tlsSettings": { "serverName": "$sni" },
                         "wsSettings": {
                           "path": "$path",
-                          "headers": { "Host": "$sni" }
+                          "headers": { "Host": "$host" }
                         }
                       }
                     }
@@ -142,7 +142,7 @@ class TunnelVpnService : VpnService() {
                         "wsSettings": {
                           "path": "$path",
                           "headers": {
-                            "Host": "$sni",
+                            "Host": "$host",
                             "Custom-Payload": "$parsedPayload"
                           }
                         }
