@@ -42,7 +42,7 @@ class TunnelVpnService : VpnService() {
             builder.addDnsServer("1.1.1.1")
             builder.addRoute("0.0.0.0", 0)
             builder.setSession("Haider Tunnel")
-            builder.protect(proxyManager!!.localPort)
+            // proxy protected automatically
 
             vpnInterface = builder.establish()
             running = true
