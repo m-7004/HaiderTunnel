@@ -28,18 +28,20 @@ class TunnelVpnService : VpnService() {
         }
 
         if (action == "ACTION_START") {
-            val server = intent.getStringExtra("SERVER") ?: ""
-            val port = intent.getStringExtra("PORT") ?: ""
+            val server = intent.getStringExtra("SERVER") ?: "Unknown"
+            val port = intent.getStringExtra("PORT") ?: "80"
             val uuid = intent.getStringExtra("UUID") ?: ""
+            val payload = intent.getStringExtra("PAYLOAD") ?: ""
             
             isRunning = true
             sendStateBroadcast(true)
-            showNotification("Connecting to: $server")
+            
+            // تحديث الإشعار ليظهر فيه الـ IP بشكل صريح وثابت
+            showNotification("Connected to: $server 🔑")
 
-            // تشغيل محرك الاتصال في خلفية مستقلة لكي لا يتوقف الإنترنت
             Thread {
                 try {
-                    startXrayEngine(server, port, uuid)
+                    startXrayEngine(server, port, uuid, payload)
                     setupVpnInterface()
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -47,25 +49,30 @@ class TunnelVpnService : VpnService() {
             }.start()
         }
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun setupVpnInterface() {
         try {
             val builder = Builder()
             builder.setSession("DarkTunnelPro")
-            builder.addAddress("10.0.0.2", 32)
-            builder.addRoute("0.0.0.0", 0) // توجيه كل حركة إنترنت الهاتف عبر النفق الخاص بنا
+            builder.setMtu(1500)
+            builder.addAddress("10.0.0.2", 24)
             builder.addDnsServer("8.8.8.8")
+            
+            // هذه الأسطر هي السحر الذي يمرر الإنترنت (التصفح والتطبيقات) إلى النفق بسلاسة
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
+            }
+            builder.addRoute("0.0.0.0", 0) 
             vpnInterface = builder.establish()
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    private fun startXrayEngine(server: String, port: String, uuid: String) {
+    private fun startXrayEngine(server: String, port: String, uuid: String, payload: String) {
         try {
-            // 1. استخراج ملف النواة التنفيذي من Assets إلى ذاكرة التطبيق الدائمة
             val xrayBinary = File(filesDir, "xray")
             if (!xrayBinary.exists()) {
                 assets.open("xray").use { input ->
@@ -74,14 +81,54 @@ class TunnelVpnService : VpnService() {
                     }
                 }
             }
-            // إعطاء صلاحيات تنفيذية للملف (ليعمل كمحرك)
             Runtime.getRuntime().exec("chmod 755 ${xrayBinary.absolutePath}").waitFor()
 
-            // 2. تشغيل النواة في الخلفية وتمرير البيانات إليها
-            val command = arrayOf(xrayBinary.absolutePath, "run") 
+            val cleanHost = payload.replace("\"", "").replace("\n", "").trim()
+
+            // إنشاء ملف config.json حقيقي ليعمل الإنترنت ببروتوكول VLESS
+            val config = """
+            {
+              "log": { "loglevel": "warning" },
+              "inbounds": [
+                {
+                  "port": 10809,
+                  "listen": "127.0.0.1",
+                  "protocol": "http",
+                  "settings": { "allowTransparent": false }
+                }
+              ],
+              "outbounds": [
+                {
+                  "protocol": "vless",
+                  "settings": {
+                    "vnext": [
+                      {
+                        "address": "$server",
+                        "port": ${port.toIntOrNull() ?: 80},
+                        "users": [ { "id": "$uuid", "encryption": "none" } ]
+                      }
+                    ]
+                  },
+                  "streamSettings": {
+                    "network": "ws",
+                    "security": "none",
+                    "wsSettings": {
+                      "path": "/",
+                      "headers": { "Host": "$cleanHost" }
+                    }
+                  }
+                }
+              ]
+            }
+            """.trimIndent()
+            
+            val configFile = File(filesDir, "config.json")
+            configFile.writeText(config)
+
+            // تشغيل النواة رسمياً وتغذيتها ببياناتك
+            val command = arrayOf(xrayBinary.absolutePath, "-c", configFile.absolutePath)
             xrayProcess = ProcessBuilder(*command).start()
             
-            showNotification("DarkTunnel Pro is Active 🔑")
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -91,17 +138,8 @@ class TunnelVpnService : VpnService() {
         isRunning = false
         sendStateBroadcast(false)
 
-        // قتل عملية Xray فوراً لقطع الاتصال ونظافة الخلفية
-        try {
-            xrayProcess?.destroy()
-            xrayProcess = null
-        } catch (e: Exception) {}
-
-        // إغلاق نفق الـ VPN وإرجاع إنترنت الهاتف الطبيعي
-        try {
-            vpnInterface?.close()
-            vpnInterface = null
-        } catch (e: Exception) {}
+        try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
+        try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
 
         stopForeground(true)
         stopSelf()

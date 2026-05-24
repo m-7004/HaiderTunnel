@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
@@ -19,7 +20,6 @@ class MainActivity : Activity() {
     private lateinit var etPayload: EditText
     private lateinit var btnConnect: Button
 
-    // مستقبل لاسلكي لتحديث حالة الزر فوراً عند التشغيل أو الإيقاف
     private val vpnStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val isRunning = intent?.getBooleanExtra("RUNNING", false) ?: false
@@ -43,18 +43,17 @@ class MainActivity : Activity() {
         etUuid.setText(prefs.getString("UUID", ""))
         etPayload.setText(prefs.getString("PAYLOAD", ""))
 
-        // تحديث حالة الواجهة عند الفتح بناءً على حالة الخدمة الحالية
         updateUi(TunnelVpnService.isRunning)
 
         btnConnect.setOnClickListener {
-            if (TunnelVpnService.isRunning) {
-                // إذا كان شغالاً، أرسل أمر الإيقاف فوراً
+            // فحص نص الزر لمعرفة الأمر الصحيح (تشغيل أم إيقاف)
+            if (btnConnect.text.toString() == "DISCONNECT") {
                 val stopIntent = Intent(this, TunnelVpnService::class.java).apply {
                     action = "ACTION_STOP"
                 }
                 startService(stopIntent)
+                updateUi(false)
             } else {
-                // إذا كان مطفأً، احفظ البيانات واطلب إذن الاتصال
                 val editor = prefs.edit()
                 editor.putString("SERVER", etServer.text.toString())
                 editor.putString("PORT", etPort.text.toString())
@@ -74,7 +73,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        registerReceiver(vpnStateReceiver, IntentFilter("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(vpnStateReceiver, IntentFilter("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS"), Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(vpnStateReceiver, IntentFilter("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS"))
+        }
         updateUi(TunnelVpnService.isRunning)
     }
 
@@ -93,6 +96,7 @@ class MainActivity : Activity() {
     }
 
     private fun startVpn() {
+        updateUi(true)
         val intent = Intent(this, TunnelVpnService::class.java).apply {
             action = "ACTION_START"
             putExtra("SERVER", etServer.text.toString())
@@ -103,14 +107,13 @@ class MainActivity : Activity() {
         startService(intent)
     }
 
-    // دالة سحرية لتغيير نصوص وألوان الزر ديناميكياً
     private fun updateUi(isRunning: Boolean) {
         if (isRunning) {
             btnConnect.text = "DISCONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F")) // اللون الأحمر للإيقاف
+            btnConnect.setBackgroundColor(Color.parseColor("#D32F2F")) // أحمر للإيقاف
         } else {
             btnConnect.text = "CONNECT"
-            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2")) // اللون البنفسجي للتشغيل
+            btnConnect.setBackgroundColor(Color.parseColor("#8A2BE2")) // بنفسجي للتشغيل
         }
     }
 }
