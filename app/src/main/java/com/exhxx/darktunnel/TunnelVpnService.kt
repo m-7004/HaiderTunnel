@@ -34,19 +34,21 @@ class TunnelVpnService : VpnService() {
 
             Thread {
                 try {
-                    // تشغيل Xray أولاً
-                    startXrayEngine(serverInput, uuid, payloadRaw)
-                    Thread.sleep(1500)
-                    
-                    // فتح النفق الإجباري (0.0.0.0)
+                    // 1. بناء نفق VPN (Global Routing) حسب وصف الذكاء الاصطناعي
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
-                        // تشغيل محرك الدارك (tun2socks)
-                        startTun2Socks(vpnInterface!!)
-                        
+                        val tunFd = vpnInterface!!.fd
+
+                        // 2. تشغيل Xray أولاً لفتح المنافذ
+                        startXrayEngine(serverInput, uuid, payloadRaw)
+                        Thread.sleep(1000)
+
+                        // 3. تشغيل tun2socks (Hev) وتمرير الـ FD السري عبر متغيرات البيئة
+                        startTun2Socks(tunFd)
+
                         isRunning = true
-                        showNotification("Connected 🟢 (Global Routing Active)")
+                        showNotification("Connected 🟢 (Global TUN Active)")
                         sendStateBroadcast(true, "CONNECTED")
                     }
                 } catch (e: Exception) {
@@ -54,53 +56,77 @@ class TunnelVpnService : VpnService() {
                 }
             }.start()
         }
-
         return START_STICKY
     }
 
     private fun setupVpnInterface() {
         try {
             val builder = Builder()
-            builder.setSession("@exhxx_Pro")
-            builder.setMtu(1400)
-            builder.addAddress("10.0.0.2", 24)
-            builder.addRoute("0.0.0.0", 0) // سحب التليجرام وكل شيء
-            builder.addDnsServer("1.1.1.1")
+            builder.setSession("DarkTunnelPro")
+            builder.addAddress("26.26.26.1", 30) // آيبي داخلي جديد للنفق
+            builder.addRoute("0.0.0.0", 0)       // التوجيه الشامل لكل شيء
             builder.addDnsServer("8.8.8.8")
+            builder.addDnsServer("1.1.1.1")
+            builder.setMtu(1500)
             
             try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
             
             vpnInterface = builder.establish()
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
-    private fun startTun2Socks(pfd: ParcelFileDescriptor) {
+    private fun startTun2Socks(fd: Int) {
         try {
-            // 🔥 الضربة القاضية: فصل المفتاح حتى لا يغلقه الأندرويد 🔥
-            val tunFd = pfd.detachFd()
+            // استخراج المحرك من assets إلى مساحة التطبيق المحمية (filesDir)
+            val binaryPath = extractAsset("tun2socks-arm64")
 
-            val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
-            File(tun2socksPath).setExecutable(true)
-
-            val command = arrayOf(
-                tun2socksPath,
-                "--tundev", "fd:$tunFd",
-                "--netif-ipaddr", "10.0.0.2",
-                "--netif-netmask", "255.255.255.0",
-                "--socks-server-addr", "127.0.0.1:10808",
-                "--loglevel", "none"
-            )
+            // كتابة إعدادات Hev ديناميكياً
+            val hevConfig = """
+            tunnel:
+              mtu: 1500
+            socks5:
+              port: 10808
+              address: '127.0.0.1'
+              udp: udp
+            misc:
+              log-level: warn
+            """.trimIndent()
             
-            val pb = ProcessBuilder(*command)
-            // خدعة الذكاء الاصطناعي لمنع الانهيار
-            pb.environment()["ANDROID_DATA"] = filesDir.absolutePath 
+            val configFile = File(filesDir, "tun2socks.yml")
+            configFile.writeText(hevConfig)
+
+            // تشغيل المحرك وتطبيق خدعة TUN_FD الجبارة
+            val pb = ProcessBuilder(binaryPath, configFile.absolutePath)
+            pb.environment()["TUN_FD"] = fd.toString()
+            pb.redirectErrorStream(true)
             tun2socksProcess = pb.start()
-            
-        } catch (e: Exception) {}
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun extractAsset(name: String): String {
+        val outFile = File(filesDir, name)
+        if (!outFile.exists()) {
+            try {
+                assets.open(name).use { input ->
+                    outFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+        // إعطاء صلاحية التشغيل الإجبارية
+        outFile.setExecutable(true)
+        return outFile.absolutePath
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
         try {
+            // استخدام Xray الموجود مسبقاً في مكتبات الأندرويد
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             File(xrayPath).setExecutable(true)
             val logFile = File(filesDir, "xray_error.log").absolutePath
@@ -153,13 +179,12 @@ class TunnelVpnService : VpnService() {
               "inbounds": [
                 {
                   "port": 10808, "listen": "127.0.0.1", "protocol": "socks",
-                  "settings": { "auth": "noauth", "udp": true },
-                  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+                  "settings": { "auth": "noauth", "udp": true }
                 }
               ],
               "outbounds": [
                 {
-                  "tag": "proxy", "protocol": "vless",
+                  "protocol": "vless",
                   "settings": {
                     "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none", "level": 0 } ] } ]
                   },
@@ -171,15 +196,8 @@ class TunnelVpnService : VpnService() {
                   },
                   "mux": { "enabled": true, "concurrency": 8 }
                 },
-                { "tag": "direct", "protocol": "freedom", "settings": {} }
-              ],
-              "routing": {
-                "domainStrategy": "IPIfNonMatch",
-                "rules": [
-                  { "type": "field", "port": 53, "outboundTag": "proxy" },
-                  { "type": "field", "network": "tcp,udp", "outboundTag": "proxy" }
-                ]
-              }
+                { "protocol": "freedom", "settings": {} }
+              ]
             }
             """.trimIndent()
             
@@ -196,6 +214,7 @@ class TunnelVpnService : VpnService() {
         sendStateBroadcast(false, msg)
         try { tun2socksProcess?.destroy(); tun2socksProcess = null } catch (e: Exception) {}
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
+        try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
         stopForeground(true)
         stopSelf()
     }
