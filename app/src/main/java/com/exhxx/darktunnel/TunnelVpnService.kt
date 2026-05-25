@@ -56,11 +56,9 @@ class TunnelVpnService : VpnService() {
                 try {
                     cleanupOldConnection()
                     
-                    // تشغيل Xray
                     startXrayEngine(serverStr, uuidStr, payloadStr)
                     Thread.sleep(1500) 
                     
-                    // تشغيل نفق الأندرويد
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
@@ -68,14 +66,14 @@ class TunnelVpnService : VpnService() {
                         startTun2Socks(tunFd)
                         
                         isRunning = true
-                        showNotification("Connected 🟢 (Global Routing Active)")
+                        showNotification("Connected 🟢 (Tun2Socks Engine Online)")
                         sendStateBroadcast(true, "CONNECTED")
 
-                        // نظام الحارس الذكي: يراقب المحركات بدون تجميد التطبيق
+                        // الحارس الذكي يراقب المحركات
                         while (!isDisconnectIntended) {
                             Thread.sleep(3000)
                             if (isProcessDead(xrayProcess) || isProcessDead(tun2socksProcess)) {
-                                break // إذا مات أحد المحركات، اكسر الحلقة لإعادة الاتصال
+                                break 
                             }
                         }
                     }
@@ -97,7 +95,6 @@ class TunnelVpnService : VpnService() {
         }.start()
     }
 
-    // دالة تفحص إذا المحرك مات أو اختنق
     private fun isProcessDead(p: Process?): Boolean {
         if (p == null) return true
         return try {
@@ -120,12 +117,13 @@ class TunnelVpnService : VpnService() {
         builder.setMtu(1400)
         builder.addAddress("10.0.0.2", 24)
         
-        // 🔥 السر هنا: هذا السطر يجبر التليجرام وكل تطبيقات الموبايل بالدخول للنفق غصباً عنها 🔥
+        // مسار التوجيه الإجباري لسحب كل بيانات التطبيقات
         builder.addRoute("0.0.0.0", 0) 
         
         builder.addDnsServer("1.1.1.1")
         builder.addDnsServer("8.8.8.8")
         
+        // استثناء التطبيق نفسه لمنع التكرار اللانهائي (Loop)
         try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
         
         vpnInterface = builder.establish()
@@ -134,13 +132,17 @@ class TunnelVpnService : VpnService() {
     private fun startTun2Socks(fd: Int) {
         try {
             val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
+            
+            // 🔥 تصحيح قاتل: إعطاء صلاحية التشغيل الإجبارية للمحرك 🔥
+            File(tun2socksPath).setExecutable(true)
+
+            // 🔥 تصحيح قاتل 2: تغيير الصيغة لتطابق محرك DarkTunnel (badvpn) 🔥
             val command = arrayOf(
                 tun2socksPath,
+                "--tundev", "fd:$fd", 
                 "--netif-ipaddr", "10.0.0.2",
                 "--netif-netmask", "255.255.255.0",
                 "--socks-server-addr", "127.0.0.1:10808",
-                "--tunfd", fd.toString(),
-                "--tunmtu", "1400",
                 "--loglevel", "none"
             )
             tun2socksProcess = ProcessBuilder(*command).start()
@@ -149,6 +151,10 @@ class TunnelVpnService : VpnService() {
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
         val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
+        
+        // إعطاء صلاحية التشغيل لمحرك Xray أيضاً لضمان عدم توقفه
+        File(xrayPath).setExecutable(true)
+        
         val logFile = File(filesDir, "xray_error.log").absolutePath
         
         var server = serverInput
@@ -168,13 +174,14 @@ class TunnelVpnService : VpnService() {
             val lines = raw.split("[crlf]", "\n")
             val firstLine = lines[0].trim()
             
-            // قراءة البايلود كامل مثل الدارك بالضبط بدون حذف
-            val firstSpace = firstLine.indexOf(" ")
+            val cleanFirstLine = firstLine.replace(Regex("HTTP/1\\.[0-9].*"), "").trim()
+            val firstSpace = cleanFirstLine.indexOf(" ")
             if (firstSpace != -1) {
-                method = firstLine.substring(0, firstSpace).trim()
-                path = firstLine.substring(firstSpace + 1).trim()
+                method = cleanFirstLine.substring(0, firstSpace).trim()
+                path = cleanFirstLine.substring(firstSpace + 1).trim()
+                if (path.isEmpty()) path = "/"
             } else {
-                method = firstLine
+                method = cleanFirstLine
             }
 
             val customHeaders = mutableListOf<String>()
