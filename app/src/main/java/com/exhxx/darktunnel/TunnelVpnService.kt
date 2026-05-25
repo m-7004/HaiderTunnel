@@ -13,6 +13,7 @@ import java.io.File
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var xrayProcess: Process? = null
+    private var tun2socksProcess: Process? = null
     private var isDisconnectIntended = false
     
     private var serverStr = ""
@@ -53,23 +54,34 @@ class TunnelVpnService : VpnService() {
         Thread {
             while (!isDisconnectIntended) {
                 try {
-                    cleanupOldConnection() // تنظيف أي اتصال معلق قبل البدء
+                    cleanupOldConnection()
                     
+                    // 1. تشغيل محرك Xray أولاً
                     startXrayEngine(serverStr, uuidStr, payloadStr)
+                    
+                    // استراحة قصيرة لضمان فتح المنافذ
+                    Thread.sleep(1500) 
+                    
+                    // 2. إنشاء نفق الـ VPN
                     setupVpnInterface()
                     
-                    isRunning = true
-                    showNotification("Connected 🟢")
-                    sendStateBroadcast(true, "CONNECTED")
+                    if (vpnInterface != null) {
+                        // 3. سحب المفتاح وتشغيل Tun2Socks لاصطياد التطبيقات
+                        val tunFd = vpnInterface!!.fd
+                        startTun2Socks(tunFd)
+                        
+                        isRunning = true
+                        showNotification("Connected 🟢 (Tun2Socks Active)")
+                        sendStateBroadcast(true, "CONNECTED")
 
-                    // الحارس: التطبيق سيقف هنا يراقب المحرك. إذا انهار المحرك سيتجاوز هذا السطر
-                    xrayProcess?.waitFor() 
+                        tun2socksProcess?.waitFor()
+                        xrayProcess?.waitFor()
+                    }
 
-                    // إذا وصلنا لهنا، يعني المحرك انهار (Crash) ولم يطلب المستخدم إيقافه
                     if (!isDisconnectIntended) {
                         showNotification("Auto-Reconnecting...")
                         sendStateBroadcast(true, "RECONNECTING")
-                        Thread.sleep(2000) // استراحة ثانيتين قبل إعادة المحاولة
+                        Thread.sleep(2000)
                     }
                     
                 } catch (e: Exception) {
@@ -84,6 +96,7 @@ class TunnelVpnService : VpnService() {
     }
 
     private fun cleanupOldConnection() {
+        try { tun2socksProcess?.destroy(); tun2socksProcess = null } catch (e: Exception) {}
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
     }
@@ -95,12 +108,30 @@ class TunnelVpnService : VpnService() {
         builder.addAddress("10.0.0.2", 24)
         builder.addDnsServer("1.1.1.1")
         builder.addDnsServer("8.8.8.8")
-        
         try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            builder.setHttpProxy(android.net.ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
-        }
+        
         vpnInterface = builder.establish()
+    }
+
+    private fun startTun2Socks(fd: Int) {
+        try {
+            // Android يقوم باستخراج المكتبات تلقائياً إلى مسار nativeLibraryDir
+            val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
+            
+            val command = arrayOf(
+                tun2socksPath,
+                "--netif-ipaddr", "10.0.0.2",
+                "--netif-netmask", "255.255.255.0",
+                "--socks-server-addr", "127.0.0.1:10808",
+                "--tunfd", fd.toString(),
+                "--tunmtu", "1400",
+                "--loglevel", "none"
+            )
+            
+            tun2socksProcess = ProcessBuilder(*command).start()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
@@ -154,12 +185,12 @@ class TunnelVpnService : VpnService() {
           "dns": { "servers": [ "1.1.1.1", "8.8.8.8" ] },
           "inbounds": [
             {
-              "port": 10809, "listen": "0.0.0.0", "protocol": "http",
+              "port": 10809, "listen": "127.0.0.1", "protocol": "http",
               "settings": { "allowTransparent": false },
               "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
             },
             {
-              "port": 10808, "listen": "0.0.0.0", "protocol": "socks",
+              "port": 10808, "listen": "127.0.0.1", "protocol": "socks",
               "settings": { "auth": "noauth", "udp": true },
               "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
             }
