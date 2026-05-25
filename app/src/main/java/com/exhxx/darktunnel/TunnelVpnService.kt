@@ -31,19 +31,24 @@ class TunnelVpnService : VpnService() {
 
         Thread {
             try {
-                // 1. تشغيل Xray بشكل نظيف وبدون تعقيدات
+                // 1. تشغيل Xray
                 startXrayEngine(serverInput, uuid, payloadRaw)
                 Thread.sleep(1500)
 
-                // 2. بناء النفق الأساسي (HTTP Proxy) اللي كان يفتح لك المتصفح
+                // 2. بناء النفق (الأساس الأصلي مالتك)
                 val builder = Builder()
                 builder.setSession("@exhxx78_Basic")
                 builder.addAddress("26.26.26.1", 24)
+                
+                // السطرين اللي نسيناها ورجعناها:
+                builder.addRoute("0.0.0.0", 0) 
+                try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
+
                 builder.addDnsServer("8.8.8.8")
                 builder.addDnsServer("1.1.1.1")
                 builder.setMtu(1500)
                 
-                // توجيه المتصفحات عبر بروكسي Xray (بدون تقييد كامل يسبب انقطاع النت)
+                // تفعيل البروكسي للمتصفحات
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
                 }
@@ -52,7 +57,7 @@ class TunnelVpnService : VpnService() {
 
                 if (vpnInterface != null) {
                     isRunning = true
-                    showNotification("Connected 🟢 (Basic Stable Mode)")
+                    showNotification("Connected 🟢 (Browser Mode Ready)")
                     sendStateBroadcast(true, "CONNECTED")
                 }
             } catch (e: Exception) {
@@ -106,7 +111,6 @@ class TunnelVpnService : VpnService() {
                 if (customHeaders.isNotEmpty()) headersJson = customHeaders.joinToString(", ")
             }
 
-            // كونفج نظيف وبسيط جداً
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
