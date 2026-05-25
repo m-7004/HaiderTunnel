@@ -34,20 +34,19 @@ class TunnelVpnService : VpnService() {
 
             Thread {
                 try {
-                    // 1. تشغيل Xray أولاً لفتح منافذ الاستقبال
+                    // تشغيل Xray أولاً
                     startXrayEngine(serverInput, uuid, payloadRaw)
-                    Thread.sleep(1000)
+                    Thread.sleep(1500)
                     
-                    // 2. إنشاء النفق الإجباري (0.0.0.0)
+                    // فتح النفق الإجباري (0.0.0.0)
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
-                        val tunFd = vpnInterface!!.fd
-                        // 3. تشغيل المحرك الجديد (Hev) واصطياد التليجرام
-                        startHevTunnel(tunFd)
+                        // تشغيل محرك الدارك (tun2socks)
+                        startTun2Socks(vpnInterface!!)
                         
                         isRunning = true
-                        showNotification("Connected 🟢 (Hev-Tunnel Active)")
+                        showNotification("Connected 🟢 (Global Routing Active)")
                         sendStateBroadcast(true, "CONNECTED")
                     }
                 } catch (e: Exception) {
@@ -62,13 +61,10 @@ class TunnelVpnService : VpnService() {
     private fun setupVpnInterface() {
         try {
             val builder = Builder()
-            builder.setSession("@exhxx78_Pro")
+            builder.setSession("@exhxx_Pro")
             builder.setMtu(1400)
             builder.addAddress("10.0.0.2", 24)
-            
-            // التوجيه الإجباري الذي كان يسبب المشاكل سابقاً، سيعمل الآن بفضل Hev
-            builder.addRoute("0.0.0.0", 0) 
-            
+            builder.addRoute("0.0.0.0", 0) // سحب التليجرام وكل شيء
             builder.addDnsServer("1.1.1.1")
             builder.addDnsServer("8.8.8.8")
             
@@ -78,33 +74,29 @@ class TunnelVpnService : VpnService() {
         } catch (e: Exception) {}
     }
 
-    private fun startHevTunnel(tunFd: Int) {
+    private fun startTun2Socks(pfd: ParcelFileDescriptor) {
         try {
+            // 🔥 الضربة القاضية: فصل المفتاح حتى لا يغلقه الأندرويد 🔥
+            val tunFd = pfd.detachFd()
+
             val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
             File(tun2socksPath).setExecutable(true)
 
-            // توليد ملف الإعدادات الخاص بـ Hev-socks5-tunnel
-            val hevConfig = """
-            tunnel:
-              fd: $tunFd
-              mtu: 1400
-            socks5:
-              address: 127.0.0.1
-              port: 10808
-              udp: 'udp'
-            """.trimIndent()
+            val command = arrayOf(
+                tun2socksPath,
+                "--tundev", "fd:$tunFd",
+                "--netif-ipaddr", "10.0.0.2",
+                "--netif-netmask", "255.255.255.0",
+                "--socks-server-addr", "127.0.0.1:10808",
+                "--loglevel", "none"
+            )
             
-            val hevFile = File(filesDir, "hev.yml")
-            hevFile.writeText(hevConfig)
-
-            // تشغيل المحرك وتمرير المفتاح السري له كمتغير بيئة
-            val pb = ProcessBuilder(tun2socksPath, hevFile.absolutePath)
-            pb.environment()["TUN_FD"] = tunFd.toString() 
+            val pb = ProcessBuilder(*command)
+            // خدعة الذكاء الاصطناعي لمنع الانهيار
+            pb.environment()["ANDROID_DATA"] = filesDir.absolutePath 
             tun2socksProcess = pb.start()
             
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
@@ -204,7 +196,6 @@ class TunnelVpnService : VpnService() {
         sendStateBroadcast(false, msg)
         try { tun2socksProcess?.destroy(); tun2socksProcess = null } catch (e: Exception) {}
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
-        try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
         stopForeground(true)
         stopSelf()
     }
