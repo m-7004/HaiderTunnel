@@ -5,17 +5,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.net.ProxyInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.system.Os
-import android.system.OsConstants
 import java.io.File
 
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var xrayProcess: Process? = null
-    private var hevProcess: Process? = null
 
     companion object {
         var isRunning = false
@@ -33,37 +31,28 @@ class TunnelVpnService : VpnService() {
 
         Thread {
             try {
-                // 1. تشغيل Xray (الذي سيتصل بزين مباشرة بفضل استثناء التطبيق)
+                // 1. تشغيل Xray بشكل نظيف وبدون تعقيدات
                 startXrayEngine(serverInput, uuid, payloadRaw)
-                Thread.sleep(1000)
+                Thread.sleep(1500)
 
-                // 2. بناء النفق واستثناء التطبيق لمنع الدوران بحلقة مفرغة
+                // 2. بناء النفق الأساسي (HTTP Proxy) اللي كان يفتح لك المتصفح
                 val builder = Builder()
-                builder.setSession("@exhxx78_Pro")
-                builder.addAddress("26.26.26.1", 30)
-                builder.addRoute("0.0.0.0", 0)
+                builder.setSession("@exhxx78_Basic")
+                builder.addAddress("26.26.26.1", 24)
                 builder.addDnsServer("8.8.8.8")
                 builder.addDnsServer("1.1.1.1")
                 builder.setMtu(1500)
-                try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
                 
+                // توجيه المتصفحات عبر بروكسي Xray (بدون تقييد كامل يسبب انقطاع النت)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    builder.setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", 10809))
+                }
+
                 vpnInterface = builder.establish()
 
                 if (vpnInterface != null) {
-                    val tunFdInt = vpnInterface!!.fd
-                    
-                    // 🔥 الضربة القاضية: كسر قفل الأندرويد عن مفتاح الـ FD ليتمكن المحرك من استلامه 🔥
-                    try {
-                        Os.fcntlInt(vpnInterface!!.fileDescriptor, OsConstants.F_SETFD, 0)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-
-                    // 3. تشغيل محرك سحب البيانات
-                    startHevEngine(tunFdInt)
-
                     isRunning = true
-                    showNotification("Connected 🟢 (Full Tunnel Active)")
+                    showNotification("Connected 🟢 (Basic Stable Mode)")
                     sendStateBroadcast(true, "CONNECTED")
                 }
             } catch (e: Exception) {
@@ -72,36 +61,6 @@ class TunnelVpnService : VpnService() {
         }.start()
 
         return START_STICKY
-    }
-
-    private fun startHevEngine(tunFd: Int) {
-        try {
-            // تشغيل المحرك من مسار المكتبات الرسمي لتخطي حظر التشغيل
-            val hevPath = applicationInfo.nativeLibraryDir + "/libhev.so"
-            File(hevPath).setExecutable(true)
-
-            val hevConfig = """
-            tunnel:
-              mtu: 1500
-            socks5:
-              port: 10808
-              address: '127.0.0.1'
-              udp: 'udp'
-            misc:
-              log-level: warn
-            """.trimIndent()
-            
-            val configFile = File(filesDir, "tun2socks.yml")
-            configFile.writeText(hevConfig)
-
-            val pb = ProcessBuilder(hevPath, configFile.absolutePath)
-            pb.environment()["TUN_FD"] = tunFd.toString()
-            pb.redirectErrorStream(true)
-            hevProcess = pb.start()
-
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
@@ -147,6 +106,7 @@ class TunnelVpnService : VpnService() {
                 if (customHeaders.isNotEmpty()) headersJson = customHeaders.joinToString(", ")
             }
 
+            // كونفج نظيف وبسيط جداً
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
@@ -188,7 +148,6 @@ class TunnelVpnService : VpnService() {
     private fun stopVpnService(msg: String) {
         isRunning = false
         sendStateBroadcast(false, msg)
-        try { hevProcess?.destroy(); hevProcess = null } catch (e: Exception) {}
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
         stopForeground(true)
