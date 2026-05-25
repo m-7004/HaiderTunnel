@@ -42,10 +42,17 @@ class MainActivity : Activity() {
             val statusMsg = intent?.getStringExtra("MSG") ?: ""
             
             if (isRunning) {
-                triggerConnectedLogs()
+                if (statusMsg == "RECONNECTING") {
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("<font color='#ffbf00'>Connection dropped! Auto-Reconnecting... [$time]</font><br/>")
+                } else if (statusMsg == "CONNECTED") {
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("<font color='#00E676'>Connected [$time]</font><br/>")
+                }
             } else {
                 if (statusMsg == "DISCONNECTED") {
-                    triggerDisconnectLogs()
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("<font color='#FF5252'>Disconnected [$time]</font><br/>")
                 }
             }
             updateUi(isRunning)
@@ -89,12 +96,10 @@ class MainActivity : Activity() {
                             if (pingMs != -1) {
                                 val color = if (pingMs <= 100) "#00E676" else "#FF5252"
                                 appendHtmlLog("HTTP Ping 200 OK (<font color='$color'>${pingMs}ms</font>) [$time]<br/>")
-                            } else {
-                                appendHtmlLog("Unable to detect internet connection [$time]<br/>")
                             }
                         }
                     }.start()
-                    mainHandler.postDelayed(this, 2500)
+                    mainHandler.postDelayed(this, 3000)
                 }
             }
         }
@@ -102,7 +107,7 @@ class MainActivity : Activity() {
         updateUi(TunnelVpnService.isRunning)
 
         btnConnect.setOnClickListener {
-            if (btnConnect.text.toString() == "DISCONNECT") {
+            if (TunnelVpnService.isRunning) {
                 val stopIntent = Intent(this, TunnelVpnService::class.java).apply { action = "ACTION_STOP" }
                 startService(stopIntent)
                 updateUi(false)
@@ -118,7 +123,8 @@ class MainActivity : Activity() {
                 if (intent != null) {
                     startActivityForResult(intent, 1)
                 } else {
-                    triggerConnectingLogs()
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    appendHtmlLog("Connecting to ${etServer.text} [$time]<br/>")
                     startVpn()
                 }
             }
@@ -129,7 +135,6 @@ class MainActivity : Activity() {
         try {
             val start = System.currentTimeMillis()
             val proxy = Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 10809))
-            // تم التغيير إلى HTTPS لتجنب حظر الأندرويد للاتصالات المكشوفة
             val url = URL("https://www.google.com/generate_204")
             val conn = url.openConnection(proxy) as HttpURLConnection
             conn.connectTimeout = 3000
@@ -148,24 +153,6 @@ class MainActivity : Activity() {
             tvLogs.append(Html.fromHtml(htmlText))
         }
         logScroll.post { logScroll.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    private fun triggerConnectingLogs() {
-        tvLogs.text = ""
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Connecting to ${etServer.text} [$time]<br/>")
-    }
-
-    private fun triggerConnectedLogs() {
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Connection established [$time]<br/>")
-        appendHtmlLog("<font color='#00E676'>Connected [$time]</font><br/>")
-    }
-
-    private fun triggerDisconnectLogs() {
-        val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        appendHtmlLog("Closing client connection [$time]<br/>")
-        appendHtmlLog("<font color='#FF5252'>Disconnected [$time]</font><br/>")
     }
 
     override fun onResume() {
