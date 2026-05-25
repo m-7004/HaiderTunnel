@@ -34,17 +34,18 @@ class TunnelVpnService : VpnService() {
 
             Thread {
                 try {
-                    // 1. بناء نفق VPN (Global Routing) حسب وصف الذكاء الاصطناعي
+                    // 1. تشغيل Xray أولاً لفتح المنافذ (بما فيها منفذ البنج)
+                    startXrayEngine(serverInput, uuid, payloadRaw)
+                    Thread.sleep(1500)
+
+                    // 2. بناء نفق VPN
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
-                        val tunFd = vpnInterface!!.fd
+                        // 🔥 الضربة القاضية: فصل المفتاح حتى لا يقتله الأندرويد 🔥
+                        val tunFd = vpnInterface!!.detachFd()
 
-                        // 2. تشغيل Xray أولاً لفتح المنافذ
-                        startXrayEngine(serverInput, uuid, payloadRaw)
-                        Thread.sleep(1000)
-
-                        // 3. تشغيل tun2socks (Hev) وتمرير الـ FD السري عبر متغيرات البيئة
+                        // 3. تشغيل tun2socks (Hev)
                         startTun2Socks(tunFd)
 
                         isRunning = true
@@ -62,9 +63,9 @@ class TunnelVpnService : VpnService() {
     private fun setupVpnInterface() {
         try {
             val builder = Builder()
-            builder.setSession("DarkTunnelPro")
-            builder.addAddress("26.26.26.1", 30) // آيبي داخلي جديد للنفق
-            builder.addRoute("0.0.0.0", 0)       // التوجيه الشامل لكل شيء
+            builder.setSession("@exhxx78_Pro")
+            builder.addAddress("26.26.26.1", 30)
+            builder.addRoute("0.0.0.0", 0)
             builder.addDnsServer("8.8.8.8")
             builder.addDnsServer("1.1.1.1")
             builder.setMtu(1500)
@@ -79,17 +80,15 @@ class TunnelVpnService : VpnService() {
 
     private fun startTun2Socks(fd: Int) {
         try {
-            // استخراج المحرك من assets إلى مساحة التطبيق المحمية (filesDir)
             val binaryPath = extractAsset("tun2socks-arm64")
 
-            // كتابة إعدادات Hev ديناميكياً
             val hevConfig = """
             tunnel:
               mtu: 1500
             socks5:
               port: 10808
               address: '127.0.0.1'
-              udp: udp
+              udp: 'udp'
             misc:
               log-level: warn
             """.trimIndent()
@@ -97,7 +96,6 @@ class TunnelVpnService : VpnService() {
             val configFile = File(filesDir, "tun2socks.yml")
             configFile.writeText(hevConfig)
 
-            // تشغيل المحرك وتطبيق خدعة TUN_FD الجبارة
             val pb = ProcessBuilder(binaryPath, configFile.absolutePath)
             pb.environment()["TUN_FD"] = fd.toString()
             pb.redirectErrorStream(true)
@@ -119,14 +117,12 @@ class TunnelVpnService : VpnService() {
                 }
             } catch (e: Exception) {}
         }
-        // إعطاء صلاحية التشغيل الإجبارية
         outFile.setExecutable(true)
         return outFile.absolutePath
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
         try {
-            // استخدام Xray الموجود مسبقاً في مكتبات الأندرويد
             val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
             File(xrayPath).setExecutable(true)
             val logFile = File(filesDir, "xray_error.log").absolutePath
@@ -172,6 +168,7 @@ class TunnelVpnService : VpnService() {
                 }
             }
 
+            // 🔥 تم إرجاع منفذ 10809 (HTTP) ليعمل العداد مال البنج بشكل طبيعي 🔥
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
@@ -180,6 +177,9 @@ class TunnelVpnService : VpnService() {
                 {
                   "port": 10808, "listen": "127.0.0.1", "protocol": "socks",
                   "settings": { "auth": "noauth", "udp": true }
+                },
+                {
+                  "port": 10809, "listen": "127.0.0.1", "protocol": "http"
                 }
               ],
               "outbounds": [
