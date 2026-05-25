@@ -56,43 +56,56 @@ class TunnelVpnService : VpnService() {
                 try {
                     cleanupOldConnection()
                     
-                    // 1. تشغيل محرك Xray أولاً
+                    // تشغيل Xray
                     startXrayEngine(serverStr, uuidStr, payloadStr)
-                    
-                    // استراحة قصيرة لضمان فتح المنافذ
                     Thread.sleep(1500) 
                     
-                    // 2. إنشاء نفق الـ VPN
+                    // تشغيل نفق الأندرويد
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
-                        // 3. سحب المفتاح وتشغيل Tun2Socks لاصطياد التطبيقات
                         val tunFd = vpnInterface!!.fd
                         startTun2Socks(tunFd)
                         
                         isRunning = true
-                        showNotification("Connected 🟢 (Tun2Socks Active)")
+                        showNotification("Connected 🟢 (Global Routing Active)")
                         sendStateBroadcast(true, "CONNECTED")
 
-                        tun2socksProcess?.waitFor()
-                        xrayProcess?.waitFor()
+                        // نظام الحارس الذكي: يراقب المحركات بدون تجميد التطبيق
+                        while (!isDisconnectIntended) {
+                            Thread.sleep(3000)
+                            if (isProcessDead(xrayProcess) || isProcessDead(tun2socksProcess)) {
+                                break // إذا مات أحد المحركات، اكسر الحلقة لإعادة الاتصال
+                            }
+                        }
                     }
 
                     if (!isDisconnectIntended) {
-                        showNotification("Auto-Reconnecting...")
+                        showNotification("Connection dropped! Reconnecting...")
                         sendStateBroadcast(true, "RECONNECTING")
                         Thread.sleep(2000)
                     }
                     
                 } catch (e: Exception) {
                     if (!isDisconnectIntended) {
-                        showNotification("Auto-Reconnecting...")
+                        showNotification("Connection dropped! Reconnecting...")
                         sendStateBroadcast(true, "RECONNECTING")
                         try { Thread.sleep(2000) } catch (ignored: Exception) {}
                     }
                 }
             }
         }.start()
+    }
+
+    // دالة تفحص إذا المحرك مات أو اختنق
+    private fun isProcessDead(p: Process?): Boolean {
+        if (p == null) return true
+        return try {
+            p.exitValue() 
+            true 
+        } catch (e: IllegalThreadStateException) {
+            false 
+        }
     }
 
     private fun cleanupOldConnection() {
@@ -106,8 +119,13 @@ class TunnelVpnService : VpnService() {
         builder.setSession("@exhxx78")
         builder.setMtu(1400)
         builder.addAddress("10.0.0.2", 24)
+        
+        // 🔥 السر هنا: هذا السطر يجبر التليجرام وكل تطبيقات الموبايل بالدخول للنفق غصباً عنها 🔥
+        builder.addRoute("0.0.0.0", 0) 
+        
         builder.addDnsServer("1.1.1.1")
         builder.addDnsServer("8.8.8.8")
+        
         try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
         
         vpnInterface = builder.establish()
@@ -115,9 +133,7 @@ class TunnelVpnService : VpnService() {
 
     private fun startTun2Socks(fd: Int) {
         try {
-            // Android يقوم باستخراج المكتبات تلقائياً إلى مسار nativeLibraryDir
             val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
-            
             val command = arrayOf(
                 tun2socksPath,
                 "--netif-ipaddr", "10.0.0.2",
@@ -127,11 +143,8 @@ class TunnelVpnService : VpnService() {
                 "--tunmtu", "1400",
                 "--loglevel", "none"
             )
-            
             tun2socksProcess = ProcessBuilder(*command).start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
@@ -155,14 +168,13 @@ class TunnelVpnService : VpnService() {
             val lines = raw.split("[crlf]", "\n")
             val firstLine = lines[0].trim()
             
-            val cleanFirstLine = firstLine.replace(Regex("HTTP/1\\.[0-9].*"), "").trim()
-            val firstSpace = cleanFirstLine.indexOf(" ")
+            // قراءة البايلود كامل مثل الدارك بالضبط بدون حذف
+            val firstSpace = firstLine.indexOf(" ")
             if (firstSpace != -1) {
-                method = cleanFirstLine.substring(0, firstSpace).trim()
-                path = cleanFirstLine.substring(firstSpace + 1).trim()
-                if (path.isEmpty()) path = "/"
+                method = firstLine.substring(0, firstSpace).trim()
+                path = firstLine.substring(firstSpace + 1).trim()
             } else {
-                method = cleanFirstLine
+                method = firstLine
             }
 
             val customHeaders = mutableListOf<String>()
