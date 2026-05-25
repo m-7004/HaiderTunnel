@@ -13,7 +13,7 @@ import java.io.File
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var xrayProcess: Process? = null
-    private var hevProcess: Process? = null
+    private var tun2socksProcess: Process? = null
     private var protectServer: ProtectServer? = null
 
     companion object {
@@ -21,7 +21,7 @@ class TunnelVpnService : VpnService() {
     }
 
     private val protectSocketPath by lazy {
-        "\${filesDir.absolutePath}/protect.sock"
+        "${filesDir.absolutePath}/protect.sock"
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -39,31 +39,30 @@ class TunnelVpnService : VpnService() {
 
             Thread {
                 try {
-                    // 1. تشغيل سيرفر الحماية المحلي لمنع التسريب
+                    // 1. تشغيل سيرفر الحماية لـ Xray
                     protectServer = ProtectServer(this, protectSocketPath).also { it.start() }
                     Thread.sleep(200)
 
-                    // 2. استخراج الآيبي لكسر حلقة التكرار (Routing Loop)
                     var serverIp = serverInput
                     if (serverInput.contains(":")) {
                         serverIp = serverInput.split(":")[0]
                     }
 
-                    // 3. تشغيل Xray أولاً لفتح المنافذ (مع البنج)
+                    // 2. تشغيل Xray
                     startXrayEngine(serverInput, serverIp, uuid, payloadRaw)
                     Thread.sleep(1500)
 
-                    // 4. بناء نفق VPN
+                    // 3. بناء النفق
                     setupVpnInterface()
                     
                     if (vpnInterface != null) {
                         val tunFd = vpnInterface!!.detachFd()
 
-                        // 5. تشغيل Hev وتمرير الـ FD وسوكت الحماية
-                        startHev(tunFd)
+                        // 4. تشغيل محرك الدارك الأصلي (tun2socks) بدلاً من Hev المقتول
+                        startTun2Socks(tunFd)
 
                         isRunning = true
-                        showNotification("Connected 🟢 (Secured & Protected)")
+                        showNotification("Connected 🟢 (Global VPN)")
                         sendStateBroadcast(true, "CONNECTED")
                     }
                 } catch (e: Exception) {
@@ -83,53 +82,30 @@ class TunnelVpnService : VpnService() {
             builder.addDnsServer("8.8.8.8")
             builder.addDnsServer("1.1.1.1")
             builder.setMtu(1500)
-            
             try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
-            
             vpnInterface = builder.establish()
         } catch (e: Exception) {}
     }
 
-    private fun startHev(tunFd: Int) {
+    private fun startTun2Socks(fd: Int) {
         try {
-            val binaryPath = extractAsset("hev-tunnel-arm64")
+            // استخدام المحرك الأصلي المجاز من الأندرويد
+            val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
+            File(tun2socksPath).setExecutable(true)
 
-            val hevConfig = """
-            tunnel:
-              mtu: 1500
-            socks5:
-              port: 10808
-              address: '127.0.0.1'
-              udp: 'udp'
-            misc:
-              log-level: warn
-            """.trimIndent()
+            val command = arrayOf(
+                tun2socksPath,
+                "--tundev", "fd:$fd",
+                "--netif-ipaddr", "26.26.26.2",
+                "--netif-netmask", "255.255.255.0",
+                "--socks-server-addr", "127.0.0.1:10808",
+                "--loglevel", "none"
+            )
             
-            val configFile = File(filesDir, "tun2socks.yml")
-            configFile.writeText(hevConfig)
-
-            val pb = ProcessBuilder(binaryPath, configFile.absolutePath)
-            pb.environment()["TUN_FD"] = tunFd.toString()
-            pb.environment()["PROTECT_PATH"] = protectSocketPath // ربط المحرك بالحماية
-            pb.redirectErrorStream(true)
-            hevProcess = pb.start()
-
+            val pb = ProcessBuilder(*command)
+            pb.environment()["ANDROID_DATA"] = filesDir.absolutePath 
+            tun2socksProcess = pb.start()
         } catch (e: Exception) {}
-    }
-
-    private fun extractAsset(name: String): String {
-        val outFile = File(filesDir, name)
-        if (!outFile.exists()) {
-            try {
-                assets.open(name).use { input ->
-                    outFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-            } catch (e: Exception) {}
-        }
-        outFile.setExecutable(true)
-        return outFile.absolutePath
     }
 
     private fun startXrayEngine(serverInput: String, serverIp: String, uuid: String, payloadRaw: String) {
@@ -171,7 +147,7 @@ class TunnelVpnService : VpnService() {
                     if (line.contains(":")) {
                         val key = line.substringBefore(":").trim()
                         val value = line.substringAfter(":").trim().replace("\"", "\\\"")
-                        customHeaders.add("\"\$key\": [\"\$value\"]")
+                        customHeaders.add("\"$key\": [\"$value\"]")
                     }
                 }
                 if (customHeaders.isNotEmpty()) {
@@ -179,7 +155,6 @@ class TunnelVpnService : VpnService() {
                 }
             }
 
-            // 🔥 الكونفج الجديد يكسر حلقة التكرار بتوجيه آيبي السيرفر مباشرة للخارج 🔥
             val config = """
             {
               "log": { "loglevel": "warning", "error": "$logFile" },
@@ -234,7 +209,7 @@ class TunnelVpnService : VpnService() {
         isRunning = false
         sendStateBroadcast(false, msg)
         protectServer?.stop()
-        try { hevProcess?.destroy(); hevProcess = null } catch (e: Exception) {}
+        try { tun2socksProcess?.destroy(); tun2socksProcess = null } catch (e: Exception) {}
         try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
         try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
         stopForeground(true)
