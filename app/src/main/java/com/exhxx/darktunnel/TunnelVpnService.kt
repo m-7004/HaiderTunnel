@@ -1,5 +1,9 @@
 package com.exhxx.darktunnel
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
@@ -9,52 +13,229 @@ import java.io.File
 class TunnelVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var xrayProcess: Process? = null
+    private var tun2socksProcess: Process? = null
+
+    companion object {
+        var isRunning = false
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val serverInput = intent?.getStringExtra("SERVER") ?: ""
-        val uuid = intent?.getStringExtra("UUID") ?: ""
-        val payloadRaw = intent?.getStringExtra("PAYLOAD") ?: ""
+        val action = intent?.action
 
-        Thread {
-            startXrayEngine(serverInput, uuid, payloadRaw)
-            
+        if (action == "ACTION_STOP") {
+            stopVpnService("DISCONNECTED")
+            return START_NOT_STICKY
+        }
+
+        if (action == "ACTION_START") {
+            val serverInput = intent.getStringExtra("SERVER") ?: ""
+            val uuid = intent.getStringExtra("UUID") ?: ""
+            val payloadRaw = intent.getStringExtra("PAYLOAD") ?: ""
+
+            Thread {
+                try {
+                    // 1. تشغيل Xray أولاً لفتح منافذ الاستقبال
+                    startXrayEngine(serverInput, uuid, payloadRaw)
+                    Thread.sleep(1000)
+                    
+                    // 2. إنشاء النفق الإجباري (0.0.0.0)
+                    setupVpnInterface()
+                    
+                    if (vpnInterface != null) {
+                        val tunFd = vpnInterface!!.fd
+                        // 3. تشغيل المحرك الجديد (Hev) واصطياد التليجرام
+                        startHevTunnel(tunFd)
+                        
+                        isRunning = true
+                        showNotification("Connected 🟢 (Hev-Tunnel Active)")
+                        sendStateBroadcast(true, "CONNECTED")
+                    }
+                } catch (e: Exception) {
+                    stopVpnService("FAILED")
+                }
+            }.start()
+        }
+
+        return START_STICKY
+    }
+
+    private fun setupVpnInterface() {
+        try {
             val builder = Builder()
-            builder.setSession("exhxx_Pro")
+            builder.setSession("@exhxx78_Pro")
             builder.setMtu(1400)
             builder.addAddress("10.0.0.2", 24)
-            // هذا السطر هو السر: يجبر كل بيانات الموبايل تدخل بالنفق
+            
+            // التوجيه الإجباري الذي كان يسبب المشاكل سابقاً، سيعمل الآن بفضل Hev
             builder.addRoute("0.0.0.0", 0) 
+            
             builder.addDnsServer("1.1.1.1")
+            builder.addDnsServer("8.8.8.8")
             
             try { builder.addDisallowedApplication(packageName) } catch (e: Exception) {}
             
             vpnInterface = builder.establish()
-        }.start()
-        
-        return START_STICKY
+        } catch (e: Exception) {}
+    }
+
+    private fun startHevTunnel(tunFd: Int) {
+        try {
+            val tun2socksPath = applicationInfo.nativeLibraryDir + "/libtun2socks.so"
+            File(tun2socksPath).setExecutable(true)
+
+            // توليد ملف الإعدادات الخاص بـ Hev-socks5-tunnel
+            val hevConfig = """
+            tunnel:
+              fd: $tunFd
+              mtu: 1400
+            socks5:
+              address: 127.0.0.1
+              port: 10808
+              udp: 'udp'
+            """.trimIndent()
+            
+            val hevFile = File(filesDir, "hev.yml")
+            hevFile.writeText(hevConfig)
+
+            // تشغيل المحرك وتمرير المفتاح السري له كمتغير بيئة
+            val pb = ProcessBuilder(tun2socksPath, hevFile.absolutePath)
+            pb.environment()["TUN_FD"] = tunFd.toString() 
+            tun2socksProcess = pb.start()
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun startXrayEngine(serverInput: String, uuid: String, payloadRaw: String) {
-        val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
-        File(xrayPath).setExecutable(true)
-        
-        // إعداد الكونفج ليكون Transparent (مرور شامل لكل البيانات)
-        val config = """
-        {
-          "log": { "loglevel": "none" },
-          "inbounds": [ { "port": 10808, "protocol": "socks", "sniffing": { "enabled": true, "destOverride": ["http", "tls"] } } ],
-          "outbounds": [ { "protocol": "vless", "settings": { "vnext": [ { "address": "${serverInput.split(":")[0]}", "port": ${serverInput.split(":")[1].toInt()}, "users": [ { "id": "$uuid", "encryption": "none" } ] } ] }, "streamSettings": { "network": "tcp", "tcpSettings": { "header": { "type": "http", "request": { "method": "GET", "path": ["/"], "headers": { "Host": ["${serverInput.split(":")[0]}"] } } } } } } ]
+        try {
+            val xrayPath = applicationInfo.nativeLibraryDir + "/libxray.so"
+            File(xrayPath).setExecutable(true)
+            val logFile = File(filesDir, "xray_error.log").absolutePath
+            
+            var server = serverInput
+            var port = "80"
+            if (serverInput.contains(":")) {
+                val parts = serverInput.split(":")
+                server = parts[0]
+                port = parts[1]
+            }
+
+            var method = "GET"
+            var path = "/"
+            var headersJson = """"Host": ["$server"], "Connection": ["keep-alive"]"""
+
+            val raw = payloadRaw.replace("[host_port]", "$server:$port")
+            if (raw.isNotBlank()) {
+                val lines = raw.split("[crlf]", "\n")
+                val firstLine = lines[0].trim()
+                
+                val cleanFirstLine = firstLine.replace(Regex("HTTP/1\\.[0-9].*"), "").trim()
+                val firstSpace = cleanFirstLine.indexOf(" ")
+                if (firstSpace != -1) {
+                    method = cleanFirstLine.substring(0, firstSpace).trim()
+                    path = cleanFirstLine.substring(firstSpace + 1).trim()
+                    if (path.isEmpty()) path = "/"
+                } else {
+                    method = cleanFirstLine
+                }
+
+                val customHeaders = mutableListOf<String>()
+                for (i in 1 until lines.size) {
+                    val line = lines[i].trim()
+                    if (line.contains(":")) {
+                        val key = line.substringBefore(":").trim()
+                        val value = line.substringAfter(":").trim().replace("\"", "\\\"")
+                        customHeaders.add("\"$key\": [\"$value\"]")
+                    }
+                }
+                if (customHeaders.isNotEmpty()) {
+                    headersJson = customHeaders.joinToString(", ")
+                }
+            }
+
+            val config = """
+            {
+              "log": { "loglevel": "warning", "error": "$logFile" },
+              "dns": { "servers": [ "1.1.1.1", "8.8.8.8" ] },
+              "inbounds": [
+                {
+                  "port": 10808, "listen": "127.0.0.1", "protocol": "socks",
+                  "settings": { "auth": "noauth", "udp": true },
+                  "sniffing": { "enabled": true, "destOverride": ["http", "tls"] }
+                }
+              ],
+              "outbounds": [
+                {
+                  "tag": "proxy", "protocol": "vless",
+                  "settings": {
+                    "vnext": [ { "address": "$server", "port": ${port.toIntOrNull() ?: 80}, "users": [ { "id": "$uuid", "encryption": "none", "level": 0 } ] } ]
+                  },
+                  "streamSettings": {
+                    "network": "tcp", "security": "none",
+                    "tcpSettings": {
+                      "header": { "type": "http", "request": { "version": "1.1", "method": "$method", "path": ["$path"], "headers": { $headersJson } } }
+                    }
+                  },
+                  "mux": { "enabled": true, "concurrency": 8 }
+                },
+                { "tag": "direct", "protocol": "freedom", "settings": {} }
+              ],
+              "routing": {
+                "domainStrategy": "IPIfNonMatch",
+                "rules": [
+                  { "type": "field", "port": 53, "outboundTag": "proxy" },
+                  { "type": "field", "network": "tcp,udp", "outboundTag": "proxy" }
+                ]
+              }
+            }
+            """.trimIndent()
+            
+            val configFile = File(filesDir, "config.json")
+            configFile.writeText(config)
+
+            xrayProcess = ProcessBuilder(xrayPath, "-c", configFile.absolutePath).start()
+            
+        } catch (e: Exception) {}
+    }
+
+    private fun stopVpnService(msg: String) {
+        isRunning = false
+        sendStateBroadcast(false, msg)
+        try { tun2socksProcess?.destroy(); tun2socksProcess = null } catch (e: Exception) {}
+        try { xrayProcess?.destroy(); xrayProcess = null } catch (e: Exception) {}
+        try { vpnInterface?.close(); vpnInterface = null } catch (e: Exception) {}
+        stopForeground(true)
+        stopSelf()
+    }
+
+    private fun showNotification(msg: String) {
+        createNotificationChannel()
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, "DARK_TUNNEL_CH").setContentTitle("@exhxx78 Pro").setContentText(msg).setSmallIcon(android.R.drawable.ic_dialog_info).build()
+        } else {
+            Notification.Builder(this).setContentTitle("@exhxx78 Pro").setContentText(msg).setSmallIcon(android.R.drawable.ic_dialog_info).build()
         }
-        """.trimIndent()
-        
-        val configFile = File(filesDir, "config.json")
-        configFile.writeText(config)
-        xrayProcess = ProcessBuilder(xrayPath, "-c", configFile.absolutePath).start()
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(1, notification)
+        startForeground(1, notification)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel("DARK_TUNNEL_CH", "VPN Service", NotificationManager.IMPORTANCE_LOW)
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun sendStateBroadcast(running: Boolean, msg: String = "") {
+        val intent = Intent("COM.EXHXX.DARKTUNNEL.UPDATE_STATUS").apply { putExtra("RUNNING", running); putExtra("MSG", msg) }
+        sendBroadcast(intent)
     }
 
     override fun onDestroy() {
-        xrayProcess?.destroy()
-        vpnInterface?.close()
+        stopVpnService("DISCONNECTED")
         super.onDestroy()
     }
 }
