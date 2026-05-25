@@ -1,6 +1,7 @@
 package com.exhxx.darktunnel
 
 import android.net.VpnService
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.File
 import android.net.LocalServerSocket
@@ -39,8 +40,12 @@ class ProtectServer(
                 val input: InputStream = client.inputStream
                 val fds = client.ancillaryFileDescriptors
                 if (fds != null && fds.isNotEmpty()) {
-                    val fd = fds[0]
-                    val success = vpnService.protect(fd)
+                    // 🔥 تصحيح الخطأ: استخراج الرقم التعريفي (Int) باستخدام ParcelFileDescriptor 🔥
+                    val pfd = ParcelFileDescriptor.dup(fds[0])
+                    val fdInt = pfd.fd
+                    val success = vpnService.protect(fdInt)
+                    pfd.close() // إغلاق النسخة بعد استخراج الرقم
+
                     client.outputStream.write(if (success) 0 else 1)
                     client.outputStream.flush()
                 } else {
